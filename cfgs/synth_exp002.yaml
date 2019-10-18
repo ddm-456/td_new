@@ -1,0 +1,8 @@
+common:
+    exp_name: synth_exp002
+    lr: 3.2768e-5
+    num_epoch: 1000
+    print_freq: 10
+    target_size: 768
+    batch_size: 16
+    eval_iter: 2000
