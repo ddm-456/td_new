@@ -5,4 +5,4 @@ common:
     print_freq: 10
     target_size: 768
     batch_size: 24
-    eval_iter: 2000
+    eval_iter: 1000

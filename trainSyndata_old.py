@@ -1,11 +1,8 @@
 import os
-import yaml
 import sys
 import torch
 import torch.utils.data as data
 import cv2
-import os.path as osp
-import time
 import numpy as np
 import scipy.io as scio
 import argparse
@@ -13,7 +10,6 @@ import time
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
-from torchutil import AverageMeter, create_logger
 import torch.optim as optim
 import random
 import h5py
@@ -40,24 +36,49 @@ from torchvision.transforms import transforms
 from craft import CRAFT
 from torch.autograd import Variable
 from multiprocessing import Pool
-import os
+
 #3.2768e-5
 random.seed(42)
-
-def mkdirs(dir):
-    if not osp.exists(dir):
-        os.mkdir(dir)
-
-def str2bool(v):
-    return v.lower() in ("yes", "y", "true", "t", "1")
-
-
 
 # class SynAnnotationTransform(object):
 #     def __init__(self):
 #         pass
 #     def __call__(self, gt):
 #         image_name = gt['imnames'][0]
+parser = argparse.ArgumentParser(description='CRAFT reimplementation')
+
+
+parser.add_argument('--resume', default=None, type=str,
+                    help='Checkpoint state_dict file to resume training from')
+parser.add_argument('--batch_size', default=128, type = int,
+                    help='batch size of training')
+#parser.add_argument('--cdua', default=True, type=str2bool,
+                    #help='Use CUDA to train model')
+parser.add_argument('--lr', '--learning-rate', default=3.2768e-5, type=float,
+                    help='initial learning rate')
+parser.add_argument('--momentum', default=0.9, type=float,
+                    help='Momentum value for optim')
+parser.add_argument('--weight_decay', default=5e-4, type=float,
+                    help='Weight decay for SGD')
+parser.add_argument('--gamma', default=0.1, type=float,
+                    help='Gamma update for SGD')
+parser.add_argument('--num_workers', default=32, type=int,
+                    help='Number of workers used in dataloading')
+
+parser.add_argument('--trained_model', default='./craft_mlt_25k.pth', type=str, help='pretrained model')
+parser.add_argument('--text_threshold', default=0.7, type=float, help='text confidence threshold')
+parser.add_argument('--low_text', default=0.4, type=float, help='text low-bound score')
+parser.add_argument('--link_threshold', default=0.4, type=float, help='link confidence threshold')
+parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
+parser.add_argument('--canvas_size', default=1280, type=int, help='image size for inference')
+parser.add_argument('--mag_ratio', default=1.5, type=float, help='image magnification ratio')
+parser.add_argument('--poly', default=False, action='store_true', help='enable polygon type')
+parser.add_argument('--show_time', default=False, action='store_true', help='show processing time')
+parser.add_argument('--test_folder', default='/data/', type=str, help='folder path to input images')
+
+
+
+args = parser.parse_args()
 
 
 def copyStateDict(state_dict):
@@ -84,57 +105,6 @@ def adjust_learning_rate(optimizer, gamma, step):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='CRAFT reimplementation')
-
-
-    parser.add_argument('--resume', default=None, type=str,
-                        help='Checkpoint state_dict file to resume training from')
-    parser.add_argument('--batch_size', default=128, type = int,
-                        help='batch size of training')
-    #parser.add_argument('--cdua', default=True, type=str2bool,
-                        #help='Use CUDA to train model')
-    parser.add_argument('--lr', '--learning-rate', default=3.2768e-5, type=float,
-                        help='initial learning rate')
-    parser.add_argument('--momentum', default=0.9, type=float,
-                        help='Momentum value for optim')
-    parser.add_argument('--weight_decay', default=5e-4, type=float,
-                        help='Weight decay for SGD')
-    parser.add_argument('--gamma', default=0.1, type=float,
-                        help='Gamma update for SGD')
-    parser.add_argument('--num_workers', default=32, type=int,
-                        help='Number of workers used in dataloading')
-
-    parser.add_argument('--config', type=str, default='cfgs/synth_exp001.yaml')
-    parser.add_argument('--trained_model', default='./craft_mlt_25k.pth', type=str, help='pretrained model')
-    parser.add_argument('--text_threshold', default=0.7, type=float, help='text confidence threshold')
-    parser.add_argument('--low_text', default=0.4, type=float, help='text low-bound score')
-    parser.add_argument('--link_threshold', default=0.4, type=float, help='link confidence threshold')
-    parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
-    parser.add_argument('--canvas_size', default=1280, type=int, help='image size for inference')
-    parser.add_argument('--mag_ratio', default=1.5, type=float, help='image magnification ratio')
-    parser.add_argument('--poly', default=False, action='store_true', help='enable polygon type')
-    parser.add_argument('--show_time', default=False, action='store_true', help='show processing time')
-    parser.add_argument('--test_folder', default='/data/', type=str, help='folder path to input images')
-
-
-    args = parser.parse_args()
-
-
-    with open(args.config) as f:
-        config = yaml.load(f)
-    for k, v in config['common'].items():
-        setattr(args, k, v)
-    mkdirs(osp.join("logs/" + args.exp_name))
-    mkdirs(osp.join("checkpoint", args.exp_name))
-    mkdirs(osp.join("checkpoint", args.exp_name, "result"))
-
-    logger = create_logger('global_logger', "logs/" + args.exp_name + '/log.txt')
-    logger.info('{}'.format(args))
-
-    for key, val in vars(args).items():
-        logger.info("{:16} {}".format(key, val))
-
-
 
     # gaussian = gaussion_transform()
     # box = scio.loadmat('/data/CRAFT-pytorch/syntext/SynthText/gt.mat')
@@ -144,10 +114,10 @@ if __name__ == '__main__':
     # imgtxt = box['txt'][0]
 
     #dataloader = syndata(imgname, charbox, imgtxt)
-    dataloader = Synth80k('./data/SynthText', target_size = args.target_size)
+    dataloader = Synth80k('./data/SynthText', target_size = 768)
     train_loader = torch.utils.data.DataLoader(
         dataloader,
-        batch_size=args.batch_size,
+        batch_size=24,
         shuffle=True,
         num_workers=4,
         drop_last=True,
@@ -198,26 +168,18 @@ if __name__ == '__main__':
     loss_time = 0
     loss_value = 0
     compare_loss = 1
-
-    batch_time = AverageMeter(100)
-    iter_time = AverageMeter(100)
-
-    loss_value = AverageMeter(10)
-    args.max_iters = args.num_epoch * len(train_loader)
-
-    for epoch in range(args.num_epoch):
+    for epoch in range(1000):
+        loss_value = 0
         # if epoch % 50 == 0 and epoch != 0:
         #     step_index += 1
         #     adjust_learning_rate(optimizer, args.gamma, step_index)
 
+        st = time.time()
         for index, (images, gh_label, gah_label, mask, _) in enumerate(train_loader):
-
-            st = time.time()
             if index % 20000 == 0 and index != 0:
                 step_index += 1
                 adjust_learning_rate(optimizer, args.gamma, step_index)
             #real_images, real_gh_label, real_gah_label, real_mask = next(batch_real)
-            idx = index + epoch * int(len(train_loader) / args.batch_size)
 
             # syn_images, syn_gh_label, syn_gah_label, syn_mask = next(batch_syn)
             # images = torch.cat((syn_images,real_images), 0)
@@ -235,7 +197,6 @@ if __name__ == '__main__':
             gah_label = Variable(gah_label).cuda()
             mask = mask.type(torch.FloatTensor)
             mask = Variable(mask).cuda()
-            batch_time.update(time.time() - st)
             # affinity_mask = affinity_mask.type(torch.FloatTensor)
             # affinity_mask = Variable(affinity_mask).cuda()
 
@@ -249,44 +210,26 @@ if __name__ == '__main__':
 
             loss.backward()
             optimizer.step()
-            loss_value.update(loss.item())
-            iter_time.update(time.time() - st)
-
-
-            remain_iter = args.max_iters - (idx + epoch * int(len(train_loader)/args.batch_size))
-            remain_time = remain_iter * iter_time.avg
-            t_m, t_s = divmod(remain_time, 60)
-            t_h, t_m = divmod(t_m, 60)
-
-            remain_time = '{:02d}:{:02d}:{:02d}'.format(int(t_h), int(t_m), int(t_s))
-
-            if index % args.print_freq == 0:
-                logger.info('Iter = [{0}/{1}]\t'
-                                'data time = {batch_time.avg:.3f}\t'
-                                'iter time = {iter_time.avg:.3f}\t'
-                                'loss = {loss.avg:.4f}\t'.format(
-                                    idx, args.max_iters, batch_time=batch_time,
-                                    iter_time=iter_time,
-                                    loss=loss_value))
-
-                logger.info("remain_time: {}".format(remain_time))
-
-
+            loss_value += loss.item()
+            if index % 2 == 0 and index > 0:
+                et = time.time()
+                print('epoch {}:({}/{}) batch || training time for 2 batch {} || training loss {} ||'.format(epoch, index, len(train_loader), et-st, loss_value/2))
+                loss_time = 0
+                loss_value = 0
+                st = time.time()
             # if loss < compare_loss:
             #     print('save the lower loss iter, loss:',loss)
             #     compare_loss = loss
             #     torch.save(net.module.state_dict(),
             #                '/data/CRAFT-pytorch/real_weights/lower_loss.pth'
 
-            if index % args.eval_iter== 0 and index != 0:
+            if index % 5000 == 0 and index != 0:
                 print('Saving state, index:', index)
                 torch.save(net.module.state_dict(),
-                           './checkpoint/{}/synweights_'.format(args.exp_name) + repr(index) + '.pth')
-                test('./checkpoint/{}/synweights_'.format(args.exp_name) + repr(index) + '.pth', args=args,
-                     result_folder='./checkpoint/{}/result/'.format(args.exp_name))
+                           './synweights/synweights_' + repr(index) + '.pth')
+                test('./synweights/synweights_' + repr(index) + '.pth', "result", args=args)
                 #test('/data/CRAFT-pytorch/craft_mlt_25k.pth')
-                res_dict = getresult('./checkpoint/{}/result/'.format(args.exp_name))
-                logger.info(res_dict['method'])
+                print(getresult("result")['method'])
 
 
 

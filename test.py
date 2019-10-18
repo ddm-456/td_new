@@ -43,19 +43,6 @@ def copyStateDict(state_dict):
 def str2bool(v):
     return v.lower() in ("yes", "y", "true", "t", "1")
 
-parser = argparse.ArgumentParser(description='CRAFT Text Detection')
-parser.add_argument('--trained_model', default='weights/craft_mlt_25k.pth', type=str, help='pretrained model')
-parser.add_argument('--text_threshold', default=0.7, type=float, help='text confidence threshold')
-parser.add_argument('--low_text', default=0.4, type=float, help='text low-bound score')
-parser.add_argument('--link_threshold', default=0.4, type=float, help='link confidence threshold')
-parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
-parser.add_argument('--canvas_size', default=2240, type=int, help='image size for inference')
-parser.add_argument('--mag_ratio', default=2, type=float, help='image magnification ratio')
-parser.add_argument('--poly', default=False, action='store_true', help='enable polygon type')
-parser.add_argument('--show_time', default=False, action='store_true', help='show processing time')
-parser.add_argument('--test_folder', default='/data/', type=str, help='folder path to input images')
-
-args = parser.parse_args()
 
 
 """ For test images in a folder """
@@ -65,7 +52,7 @@ result_folder = './result/'
 if not os.path.isdir(result_folder):
     os.mkdir(result_folder)
 
-def test_net(net, image, text_threshold, link_threshold, low_text, cuda, poly):
+def test_net(net, image, text_threshold, link_threshold, low_text, cuda, poly, args=None):
     t0 = time.time()
 
     # resize
@@ -111,7 +98,7 @@ def test_net(net, image, text_threshold, link_threshold, low_text, cuda, poly):
 
 
 
-def test(modelpara):
+def test(modelpara, result_folder=None, args=None):
     # load net
     net = CRAFT()     # initialize
 
@@ -136,7 +123,7 @@ def test(modelpara):
         image = imgproc.loadImage(image_path)
 
         with torch.no_grad():
-            bboxes, polys, score_text = test_net(net, image, args.text_threshold, args.link_threshold, args.low_text, args.cuda, args.poly)
+            bboxes, polys, score_text = test_net(net, image, args.text_threshold, args.link_threshold, args.low_text, args.cuda, args.poly, args=args)
         # save score text
         filename, file_ext = os.path.splitext(os.path.basename(image_path))
         mask_file = result_folder + "/res_" + filename + '_mask.jpg'
