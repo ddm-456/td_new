@@ -106,11 +106,11 @@ def random_crop(imgs, img_size, character_bboxes):
         crop_w = sample_bboxes[1, 0] if tw < sample_bboxes[1, 0] - j else tw
     else:
         ### train for IC15 dataset####
-        # i = random.randint(0, h - th)
-        # j = random.randint(0, w - tw)
+        i = random.randint(0, h - th)
+        j = random.randint(0, w - tw)
 
         #### train for MLT dataset ###
-        i, j = 0, 0
+        #i, j = 0, 0
         crop_h, crop_w = h + 1, w + 1  # make the crop_h, crop_w > tw, th
 
     for idx in range(len(imgs)):
@@ -201,6 +201,7 @@ class craft_base_dataset(data.Dataset):
         img_torch = img_torch.type(torch.FloatTensor).cuda()
         with torch.no_grad():
             scores, _ = net(img_torch)
+        net.train()
         region_scores = scores[0, :, :, 0].cpu().data.numpy()
         region_scores = np.uint8(np.clip(region_scores, 0, 1) * 255)
         bgr_region_scores = cv2.resize(region_scores, (input.shape[1], input.shape[0]))

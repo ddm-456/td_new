@@ -152,11 +152,11 @@ if __name__ == '__main__':
         num_workers=4,
         drop_last=True,
         pin_memory=True)
-    #batch_syn = iter(train_loader)
+    batch_syn = iter(train_loader)
     # prefetcher = data_prefetcher(dataloader)
     # input, target1, target2 = prefetcher.next()
     #print(input.size())
-    net = CRAFT()
+    net = CRAFT(freeze=True)
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/CRAFT_net_050000.pth')))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/craft_mlt_25k.pth')))
@@ -170,12 +170,23 @@ if __name__ == '__main__':
     #     num_workers=0,
     #     drop_last=True,
     #     pin_memory=True)
+    net.load_state_dict(copyStateDict(torch.load('Syndata.pth')))
     net = net.cuda()
     #net = CRAFT_net
 
     # if args.cdua:
     net = torch.nn.DataParallel(net,device_ids=[0,1,2,3]).cuda()
+    realdata = ICDAR2015(net, './data/icdar15', target_size=args.target_size)
+    real_data_loader = torch.utils.data.DataLoader(
+        realdata,
+        batch_size=args.batch_size*5,
+        shuffle=True,
+        num_workers=0,
+        drop_last=True,
+        pin_memory=True
+    )
     cudnn.benchmark = True
+    print(len(real_data_loader))
     # realdata = ICDAR2015(net, '/data/CRAFT-pytorch/icdar2015', target_size=768)
     # real_data_loader = torch.utils.data.DataLoader(
     #     realdata,
@@ -203,21 +214,28 @@ if __name__ == '__main__':
     iter_time = AverageMeter(100)
 
     loss_value = AverageMeter(10)
-    args.max_iters = args.num_epoch * len(train_loader)
+    args.max_iters = args.num_epoch * (int(len(real_data_loader)/(args.batch_size*5)))
 
     for epoch in range(args.num_epoch):
         # if epoch % 50 == 0 and epoch != 0:
         #     step_index += 1
         #     adjust_learning_rate(optimizer, args.gamma, step_index)
 
-        for index, (images, gh_label, gah_label, mask, _) in enumerate(train_loader):
+        for index, (real_images, real_gh_label, real_gah_label, real_mask) in enumerate(real_data_loader):
+            syn_images, syn_gh_label, syn_gah_label, syn_mask = next(batch_syn)
+            images = torch.cat((syn_images, real_images), 0)
+            gh_label = torch.cat((syn_gh_label, real_gah_label), 0)
+            gah_label = torch.cat((syn_gah_label, real_gah_label), 0)
+            mask = torch.cat((syn_mask, real_mask), 0)
 
             st = time.time()
+
             if index % 20000 == 0 and index != 0:
                 step_index += 1
                 adjust_learning_rate(optimizer, args.gamma, step_index)
             #real_images, real_gh_label, real_gah_label, real_mask = next(batch_real)
-            idx = index + epoch * int(len(train_loader) / args.batch_size)
+            idx = index + epoch * int(len(real_data_loader))
+            net.train()
 
             # syn_images, syn_gh_label, syn_gah_label, syn_mask = next(batch_syn)
             # images = torch.cat((syn_images,real_images), 0)
@@ -253,7 +271,7 @@ if __name__ == '__main__':
             iter_time.update(time.time() - st)
 
 
-            remain_iter = args.max_iters - (idx + epoch * int(len(train_loader)/args.batch_size))
+            remain_iter = args.max_iters - (idx)
             remain_time = remain_iter * iter_time.avg
             t_m, t_s = divmod(remain_time, 60)
             t_h, t_m = divmod(t_m, 60)
@@ -278,11 +296,11 @@ if __name__ == '__main__':
             #     torch.save(net.module.state_dict(),
             #                '/data/CRAFT-pytorch/real_weights/lower_loss.pth'
 
-            if index % args.eval_iter== 0 and index != 0:
-                print('Saving state, index:', index)
+            if idx % args.eval_iter== 0 and idx != 0:
+                print('Saving state, index:', idx)
                 torch.save(net.module.state_dict(),
-                           './checkpoint/{}/synweights_'.format(args.exp_name) + repr(index) + '.pth')
-                test('./checkpoint/{}/synweights_'.format(args.exp_name) + repr(index) + '.pth', args=args,
+                           './checkpoint/{}/synweights_'.format(args.exp_name) + repr(idx) + '.pth')
+                test('./checkpoint/{}/synweights_'.format(args.exp_name) + repr(idx) + '.pth', args=args,
                      result_folder='./checkpoint/{}/result/'.format(args.exp_name))
                 #test('/data/CRAFT-pytorch/craft_mlt_25k.pth')
                 res_dict = getresult('./checkpoint/{}/result/'.format(args.exp_name))
