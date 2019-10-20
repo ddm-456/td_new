@@ -217,12 +217,12 @@ if __name__ == '__main__':
     args.max_iters = args.num_epoch * (int(len(real_data_loader)/(args.batch_size*5)))
 
     for epoch in range(args.num_epoch):
-        # if epoch % 50 == 0 and epoch != 0:
-        #     step_index += 1
-        #     adjust_learning_rate(optimizer, args.gamma, step_index)
+        if epoch % 50 == 0 and epoch != 0:
+            step_index += 1
+            adjust_learning_rate(optimizer, args.gamma, step_index)
 
-        for index, (real_images, real_gh_label, real_gah_label, real_mask) in enumerate(real_data_loader):
-            syn_images, syn_gh_label, syn_gah_label, syn_mask = next(batch_syn)
+        for index, (real_images, real_gh_label, real_gah_label, real_mask, _) in enumerate(real_data_loader):
+            syn_images, syn_gh_label, syn_gah_label, syn_mask, _ = next(batch_syn)
             images = torch.cat((syn_images, real_images), 0)
             gh_label = torch.cat((syn_gh_label, real_gah_label), 0)
             gah_label = torch.cat((syn_gah_label, real_gah_label), 0)
@@ -230,9 +230,6 @@ if __name__ == '__main__':
 
             st = time.time()
 
-            if index % 20000 == 0 and index != 0:
-                step_index += 1
-                adjust_learning_rate(optimizer, args.gamma, step_index)
             #real_images, real_gh_label, real_gah_label, real_mask = next(batch_real)
             idx = index + epoch * int(len(real_data_loader))
             net.train()
