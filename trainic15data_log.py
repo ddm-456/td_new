@@ -176,6 +176,17 @@ if __name__ == '__main__':
 
     # if args.cdua:
     net = torch.nn.DataParallel(net,device_ids=[0,1,2,3]).cuda()
+    idx = 0
+    torch.save(net.module.state_dict(),
+               './checkpoint/{}/synweights_'.format(args.exp_name) + repr(idx) + '.pth')
+    test('./checkpoint/{}/synweights_'.format(args.exp_name) + repr(idx) + '.pth', args=args,
+         result_folder='./checkpoint/{}/result/'.format(args.exp_name))
+    #test('/data/CRAFT-pytorch/craft_mlt_25k.pth')
+    res_dict = getresult('./checkpoint/{}/result/'.format(args.exp_name))
+    logger.info(res_dict['method'])
+
+
+
     realdata = ICDAR2015(net, './data/icdar15', target_size=args.target_size)
     real_data_loader = torch.utils.data.DataLoader(
         realdata,
@@ -222,17 +233,17 @@ if __name__ == '__main__':
             adjust_learning_rate(optimizer, args.gamma, step_index)
 
         for index, (real_images, real_gh_label, real_gah_label, real_mask, _) in enumerate(real_data_loader):
-            syn_images, syn_gh_label, syn_gah_label, syn_mask, _ = next(batch_syn)
+            syn_images, syn_gh_label, syn_gah_label, syn_mask, __ = next(batch_syn)
             images = torch.cat((syn_images, real_images), 0)
             gh_label = torch.cat((syn_gh_label, real_gah_label), 0)
             gah_label = torch.cat((syn_gah_label, real_gah_label), 0)
             mask = torch.cat((syn_mask, real_mask), 0)
 
             st = time.time()
+            net.train()
 
             #real_images, real_gh_label, real_gah_label, real_mask = next(batch_real)
             idx = index + epoch * int(len(real_data_loader))
-            net.train()
 
             # syn_images, syn_gh_label, syn_gah_label, syn_mask = next(batch_syn)
             # images = torch.cat((syn_images,real_images), 0)

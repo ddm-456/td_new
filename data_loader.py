@@ -199,9 +199,9 @@ class craft_base_dataset(data.Dataset):
                                                                    variance=(0.229, 0.224, 0.225)))
         img_torch = img_torch.permute(2, 0, 1).unsqueeze(0)
         img_torch = img_torch.type(torch.FloatTensor).cuda()
+        net.eval()
         with torch.no_grad():
             scores, _ = net(img_torch)
-        net.train()
         region_scores = scores[0, :, :, 0].cpu().data.numpy()
         region_scores = np.uint8(np.clip(region_scores, 0, 1) * 255)
         bgr_region_scores = cv2.resize(region_scores, (input.shape[1], input.shape[0]))

@@ -98,7 +98,7 @@ def test_net(net, image, text_threshold, link_threshold, low_text, cuda, poly, a
 
 
 
-def test(modelpara, args=None, result_folder=None):
+def test(modelpara, result_folder=None, args=None):
     # load net
     net = CRAFT()     # initialize
 
@@ -123,7 +123,7 @@ def test(modelpara, args=None, result_folder=None):
         image = imgproc.loadImage(image_path)
 
         with torch.no_grad():
-            bboxes, polys, score_text = test_net(net, image, args.text_threshold, args.link_threshold, args.low_text, args.cuda, args.poly, args)
+            bboxes, polys, score_text = test_net(net, image, args.text_threshold, args.link_threshold, args.low_text, args.cuda, args.poly, args=args)
         # save score text
         filename, file_ext = os.path.splitext(os.path.basename(image_path))
         mask_file = result_folder + "/res_" + filename + '_mask.jpg'
