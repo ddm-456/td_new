@@ -278,11 +278,11 @@ if __name__ == '__main__':
             #     torch.save(net.module.state_dict(),
             #                '/data/CRAFT-pytorch/real_weights/lower_loss.pth'
 
-            if index % args.eval_iter== 0 and index != 0:
-                print('Saving state, index:', index)
+            if idx % args.eval_iter== 0 and idx != 0:
+                print('Saving state, idx:', idx)
                 torch.save(net.module.state_dict(),
-                           './checkpoint/{}/model_'.format(args.exp_name) + repr(index) + '.pth')
-                test('./checkpoint/{}/model_'.format(args.exp_name) + repr(index) + '.pth', args=args,
+                           './checkpoint/{}/model_'.format(args.exp_name) + repr(idx) + '.pth')
+                test('./checkpoint/{}/model_'.format(args.exp_name) + repr(idx) + '.pth', args=args,
                      result_folder='./checkpoint/{}/result/'.format(args.exp_name))
                 #test('/data/CRAFT-pytorch/craft_mlt_25k.pth')
                 res_dict = getresult('./checkpoint/{}/result/'.format(args.exp_name))
