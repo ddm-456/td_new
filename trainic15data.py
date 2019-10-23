@@ -1,8 +1,11 @@
 import os
+import yaml
 import sys
 import torch
 import torch.utils.data as data
 import cv2
+import os.path as osp
+import time
 import numpy as np
 import scipy.io as scio
 import argparse
@@ -10,6 +13,7 @@ import time
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
+from torchutil import AverageMeter, create_logger
 import torch.optim as optim
 import random
 import h5py
@@ -36,41 +40,24 @@ from torchvision.transforms import transforms
 from craft import CRAFT
 from torch.autograd import Variable
 from multiprocessing import Pool
-
+import os
 #3.2768e-5
 random.seed(42)
+
+def mkdirs(dir):
+    if not osp.exists(dir):
+        os.mkdir(dir)
+
+def str2bool(v):
+    return v.lower() in ("yes", "y", "true", "t", "1")
+
+
 
 # class SynAnnotationTransform(object):
 #     def __init__(self):
 #         pass
 #     def __call__(self, gt):
 #         image_name = gt['imnames'][0]
-parser = argparse.ArgumentParser(description='CRAFT reimplementation')
-
-
-parser.add_argument('--resume', default=None, type=str,
-                    help='Checkpoint state_dict file to resume training from')
-parser.add_argument('--batch_size', default=128, type = int,
-                    help='batch size of training')
-#parser.add_argument('--cdua', default=True, type=str2bool,
-                    #help='Use CUDA to train model')
-parser.add_argument('--lr', '--learning-rate', default=3.2768e-5, type=float,
-                    help='initial learning rate')
-parser.add_argument('--momentum', default=0.9, type=float,
-                    help='Momentum value for optim')
-parser.add_argument('--weight_decay', default=5e-4, type=float,
-                    help='Weight decay for SGD')
-parser.add_argument('--gamma', default=0.1, type=float,
-                    help='Gamma update for SGD')
-parser.add_argument('--num_workers', default=32, type=int,
-                    help='Number of workers used in dataloading')
-
-
-args = parser.parse_args()
-
-
-
-
 
 
 def copyStateDict(state_dict):
@@ -97,48 +84,121 @@ def adjust_learning_rate(optimizer, gamma, step):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='CRAFT reimplementation')
 
-    dataloader = Synth80k('./data/SynthText', target_size = 768)
+
+    parser.add_argument('--resume', default=None, type=str,
+                        help='Checkpoint state_dict file to resume training from')
+    parser.add_argument('--load_model', default='Syndata.pth', type=str)
+    parser.add_argument('--batch_size', default=128, type = int,
+                        help='batch size of training')
+    #parser.add_argument('--cdua', default=True, type=str2bool,
+                        #help='Use CUDA to train model')
+    parser.add_argument('--lr', '--learning-rate', default=3.2768e-5, type=float,
+                        help='initial learning rate')
+    parser.add_argument('--momentum', default=0.9, type=float,
+                        help='Momentum value for optim')
+    parser.add_argument('--weight_decay', default=5e-4, type=float,
+                        help='Weight decay for SGD')
+    parser.add_argument('--gamma', default=0.1, type=float,
+                        help='Gamma update for SGD')
+    parser.add_argument('--num_workers', default=32, type=int,
+                        help='Number of workers used in dataloading')
+
+    parser.add_argument('--config', type=str, default='cfgs/synth_exp001.yaml')
+    parser.add_argument('--trained_model', default='./craft_mlt_25k.pth', type=str, help='pretrained model')
+    parser.add_argument('--text_threshold', default=0.7, type=float, help='text confidence threshold')
+    parser.add_argument('--low_text', default=0.4, type=float, help='text low-bound score')
+    parser.add_argument('--link_threshold', default=0.4, type=float, help='link confidence threshold')
+    parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
+    parser.add_argument('--canvas_size', default=2240, type=int, help='image size for inference')
+    parser.add_argument('--mag_ratio', default=2, type=float, help='image magnification ratio')
+    parser.add_argument('--poly', default=False, action='store_true', help='enable polygon type')
+    parser.add_argument('--show_time', default=False, action='store_true', help='show processing time')
+    parser.add_argument('--test_folder', default='/data/', type=str, help='folder path to input images')
+
+
+    args = parser.parse_args()
+
+
+    with open(args.config) as f:
+        config = yaml.load(f)
+    for k, v in config['common'].items():
+        setattr(args, k, v)
+    mkdirs(osp.join("logs/" + args.exp_name))
+    mkdirs(osp.join("checkpoint", args.exp_name))
+    mkdirs(osp.join("checkpoint", args.exp_name, "result"))
+
+    logger = create_logger('global_logger', "logs/" + args.exp_name + '/log.txt')
+    logger.info('{}'.format(args))
+
+    for key, val in vars(args).items():
+        logger.info("{:16} {}".format(key, val))
+
+
+
+    # gaussian = gaussion_transform()
+    # box = scio.loadmat('/data/CRAFT-pytorch/syntext/SynthText/gt.mat')
+    # bbox = box['wordBB'][0][0][0]
+    # charbox = box['charBB'][0]
+    # imgname = box['imnames'][0]
+    # imgtxt = box['txt'][0]
+
+    #dataloader = syndata(imgname, charbox, imgtxt)
+    dataloader = Synth80k('./data/SynthText', target_size = args.target_size)
     train_loader = torch.utils.data.DataLoader(
         dataloader,
-        batch_size=2,
+        batch_size=args.batch_size,
         shuffle=True,
-        num_workers=2,
+        num_workers=4,
         drop_last=True,
         pin_memory=True)
     batch_syn = iter(train_loader)
-
-    net = CRAFT(freeze = True)
-
-    net.load_state_dict(copyStateDict(torch.load('./Syndata.pth')))
-
+    # prefetcher = data_prefetcher(dataloader)
+    # input, target1, target2 = prefetcher.next()
+    #print(input.size())
+    net = CRAFT(freeze=True)
+    net.load_state_dict(copyStateDict(torch.load(args.load_model)))
+    #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/CRAFT_net_050000.pth')))
+    #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
+    #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/craft_mlt_25k.pth')))
+    #net.load_state_dict(copyStateDict(torch.load('vgg16_bn-6c64b313.pth')))
+    #realdata = realdata(net)
+    # realdata = ICDAR2015(net, '/data/CRAFT-pytorch/icdar2015', target_size = 768)
+    # real_data_loader = torch.utils.data.DataLoader(
+    #     realdata,
+    #     batch_size=10,
+    #     shuffle=True,
+    #     num_workers=0,
+    #     drop_last=True,
+    #     pin_memory=True)
     net = net.cuda()
+    #net = CRAFT_net
 
-
-
+    # if args.cdua:
     net = torch.nn.DataParallel(net,device_ids=[0,1,2,3]).cuda()
     cudnn.benchmark = True
+    # realdata = ICDAR2015(net, '/data/CRAFT-pytorch/icdar2015', target_size=768)
+    # real_data_loader = torch.utils.data.DataLoader(
+    #     realdata,
+    #     batch_size=10,
+    #     shuffle=True,
+    #     num_workers=0,
+    #     drop_last=True,
+    #     pin_memory=True)
     realdata = ICDAR2015(net, './data/icdar15', target_size=768)
     real_data_loader = torch.utils.data.DataLoader(
-        realdata,
-        batch_size=10,
-        shuffle=True,
-        num_workers=0,
-        drop_last=True,
-        pin_memory=True)
-
+            realdata,
+            batch_size=args.batch_size*5,
+            shuffle=True,
+            num_workers=0,
+            drop_last=True,
+            pin_memory=True)
 
     optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     criterion = Maploss()
     #criterion = torch.nn.MSELoss(reduce=True, size_average=True)
     net.train()
-    epoch = 0
-    torch.save(net.module.state_dict(),
-               './real_weights/CRAFT_clr_' + repr(epoch) + '.pth')
-    test('./real_weights/CRAFT_clr_' + repr(epoch) + '.pth')
-    #test('/data/CRAFT-pytorch/craft_mlt_25k.pth')
-    getresult()
-
 
 
     step_index = 0
@@ -147,16 +207,21 @@ if __name__ == '__main__':
     loss_time = 0
     loss_value = 0
     compare_loss = 1
-    for epoch in range(1000):
-        train_time_st = time.time()
-        loss_value = 0
-        if epoch % 50 == 0 and epoch != 0:
-            step_index += 1
-            adjust_learning_rate(optimizer, args.gamma, step_index)
 
-        st = time.time()
+    batch_time = AverageMeter(100)
+    iter_time = AverageMeter(100)
+
+    loss_value = AverageMeter(10)
+    args.max_iters = args.num_epoch * len(train_loader)
+
+    for epoch in range(args.num_epoch):
+        if epoch % 50 == 0 and epoch != 0:
+             step_index += 1
+             adjust_learning_rate(optimizer, args.gamma, step_index)
         for index, (real_images, real_gh_label, real_gah_label, real_mask, _) in enumerate(real_data_loader):
             #real_images, real_gh_label, real_gah_label, real_mask = next(batch_real)
+            st = time.time()
+            idx = index + epoch * int(len(real_data_loader))
             syn_images, syn_gh_label, syn_gah_label, syn_mask, __ = next(batch_syn)
             images = torch.cat((syn_images,real_images), 0)
             gh_label = torch.cat((syn_gh_label, real_gh_label), 0)
@@ -185,26 +250,44 @@ if __name__ == '__main__':
 
             loss.backward()
             optimizer.step()
-            loss_value += loss.item()
-            if index % 2 == 0 and index > 0:
-                et = time.time()
-                print('epoch {}:({}/{}) batch || training time for 2 batch {} || training loss {} ||'.format(epoch, index, len(real_data_loader), et-st, loss_value/2))
-                loss_time = 0
-                loss_value = 0
-                st = time.time()
+            loss_value.update(loss.item())
+            iter_time.update(time.time() - st)
+
+
+            remain_iter = args.max_iters - (idx + epoch * int(len(train_loader)/args.batch_size))
+            remain_time = remain_iter * iter_time.avg
+            t_m, t_s = divmod(remain_time, 60)
+            t_h, t_m = divmod(t_m, 60)
+
+            remain_time = '{:02d}:{:02d}:{:02d}'.format(int(t_h), int(t_m), int(t_s))
+
+            if index % args.print_freq == 0:
+                logger.info('Iter = [{0}/{1}]\t'
+                                'data time = {batch_time.avg:.3f}\t'
+                                'iter time = {iter_time.avg:.3f}\t'
+                                'loss = {loss.avg:.4f}\t'.format(
+                                    idx, args.max_iters, batch_time=batch_time,
+                                    iter_time=iter_time,
+                                    loss=loss_value))
+
+                logger.info("remain_time: {}".format(remain_time))
+
+
             # if loss < compare_loss:
             #     print('save the lower loss iter, loss:',loss)
             #     compare_loss = loss
             #     torch.save(net.module.state_dict(),
-            #                '/data/CRAFT-pytorch/real_weights/lower_loss.pth')
+            #                '/data/CRAFT-pytorch/real_weights/lower_loss.pth'
 
-        print('Saving state, iter:', epoch)
-        torch.save(net.module.state_dict(),
-                   './real_weights/CRAFT_clr_' + repr(epoch) + '.pth')
-        test('./real_weights/CRAFT_clr_' + repr(epoch) + '.pth')
-        #test('/data/CRAFT-pytorch/craft_mlt_25k.pth')
-        getresult()
-
+            if index % args.eval_iter== 0 and index != 0:
+                print('Saving state, index:', index)
+                torch.save(net.module.state_dict(),
+                           './checkpoint/{}/model_'.format(args.exp_name) + repr(index) + '.pth')
+                test('./checkpoint/{}/model_'.format(args.exp_name) + repr(index) + '.pth', args=args,
+                     result_folder='./checkpoint/{}/result/'.format(args.exp_name))
+                #test('/data/CRAFT-pytorch/craft_mlt_25k.pth')
+                res_dict = getresult('./checkpoint/{}/result/'.format(args.exp_name))
+                logger.info(res_dict['method'])
 
 
 

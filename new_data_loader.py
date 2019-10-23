@@ -8,7 +8,8 @@
 import torch
 import torch.utils.data as data
 import scipy.io as scio
-from gaussian import GaussianTransformer
+from new_gaussian import GaussianTransformer
+from tqdm import tqdm
 from watershed import watershed
 import re
 import itertools
@@ -106,11 +107,11 @@ def random_crop(imgs, img_size, character_bboxes):
         crop_w = sample_bboxes[1, 0] if tw < sample_bboxes[1, 0] - j else tw
     else:
         ### train for IC15 dataset####
-        i = random.randint(0, h - th)
-        j = random.randint(0, w - tw)
+        # i = random.randint(0, h - th)
+        # j = random.randint(0, w - tw)
 
         #### train for MLT dataset ###
-        #i, j = 0, 0
+        i, j = 0, 0
         crop_h, crop_w = h + 1, w + 1  # make the crop_h, crop_w > tw, th
 
     for idx in range(len(imgs)):
@@ -152,7 +153,7 @@ class craft_base_dataset(data.Dataset):
         self.target_size = target_size
         self.viz = viz
         self.debug = debug
-        self.gaussianTransformer = GaussianTransformer(imgSize=1024, region_threshold=0.35, affinity_threshold=0.15)
+        self.gaussianTransformer = GaussianTransformer(imgSize=120, region_threshold=0.35, affinity_threshold=0.15)
 
     def load_image_gt_and_confidencemask(self, index):
         '''
@@ -199,7 +200,6 @@ class craft_base_dataset(data.Dataset):
                                                                    variance=(0.229, 0.224, 0.225)))
         img_torch = img_torch.permute(2, 0, 1).unsqueeze(0)
         img_torch = img_torch.type(torch.FloatTensor).cuda()
-        net.eval()
         with torch.no_grad():
             scores, _ = net(img_torch)
         region_scores = scores[0, :, :, 0].cpu().data.numpy()
@@ -291,7 +291,7 @@ class craft_base_dataset(data.Dataset):
         output = np.concatenate([gt_scores, confidence_mask_gray],
                                 axis=0)
         output = np.hstack([image, output])
-        outpath = os.path.join(os.path.join(os.path.dirname(__file__) + '/output'), "%s_input.jpg" % imagename)
+        outpath = os.path.join(os.path.join(os.path.dirname(__file__) + './output'), "%s_input.jpg" % imagename)
         print(outpath)
         if not os.path.exists(os.path.dirname(outpath)):
             os.mkdir(os.path.dirname(outpath))
@@ -314,7 +314,8 @@ class craft_base_dataset(data.Dataset):
         heat_map = np.concatenate([target_gaussian_heatmap_color, target_gaussian_affinity_heatmap_color], axis=1)
         confidence_mask_gray = imgproc.cvt2HeatmapImg(confidence_mask)
         output = np.concatenate([output_image, heat_map, confidence_mask_gray], axis=1)
-        outpath = os.path.join(os.path.join(os.path.dirname(__file__) + '/output'), imagename)
+        outpath = os.path.join(os.path.join(os.path.dirname(__file__) + './output'), imagename)
+        print(outpath)
 
         if not os.path.exists(os.path.dirname(outpath)):
             os.mkdir(os.path.dirname(outpath))
@@ -618,26 +619,28 @@ class ICDAR2015(craft_base_dataset):
 
 
 if __name__ == '__main__':
-    # synthtextloader = Synth80k('/home/jiachx/publicdatasets/SynthText/SynthText', target_size=768, viz=True, debug=True)
-    # train_loader = torch.utils.data.DataLoader(
-    #     synthtextloader,
-    #     batch_size=1,
-    #     shuffle=False,
-    #     num_workers=0,
-    #     drop_last=True,
-    #     pin_memory=True)
-    # train_batch = iter(train_loader)
-    # image_origin, target_gaussian_heatmap, target_gaussian_affinity_heatmap, mask = next(train_batch)
+    synthtextloader = Synth80k('./data/SynthText', target_size=768, viz=True, debug=True)
+    train_loader = torch.utils.data.DataLoader(
+         synthtextloader,
+         batch_size=1,
+         shuffle=False,
+         num_workers=0,
+         drop_last=True,
+        pin_memory=True)
+    train_batch = iter(train_loader)
+    image_origin, target_gaussian_heatmap, target_gaussian_affinity_heatmap, mask, _ = next(train_batch)
+    for _ in tqdm(range(100)):
+        k = next(train_batch)
     from craft import CRAFT
     from torchutil import copyStateDict
 
     net = CRAFT(freeze=True)
     net.load_state_dict(
-        copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
+        copyStateDict(torch.load('Syndata.pth')))
     net = net.cuda()
     net = torch.nn.DataParallel(net)
     net.eval()
-    dataloader = ICDAR2015(net, '/data/CRAFT-pytorch/icdar2015', target_size=768, viz=True)
+    dataloader = ICDAR2015(net, './data/icdar15', target_size=768, viz=True)
     train_loader = torch.utils.data.DataLoader(
         dataloader,
         batch_size=1,
