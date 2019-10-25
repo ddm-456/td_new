@@ -89,6 +89,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--resume', default=None, type=str,
                         help='Checkpoint state_dict file to resume training from')
+    parser.add_argument('--load_model', default='Syndata.pth', type=str)
     parser.add_argument('--batch_size', default=128, type = int,
                         help='batch size of training')
     #parser.add_argument('--cdua', default=True, type=str2bool,
@@ -157,7 +158,7 @@ if __name__ == '__main__':
     # input, target1, target2 = prefetcher.next()
     #print(input.size())
     net = CRAFT(freeze=True)
-    net.load_state_dict(copyStateDict(torch.load("./Syndata.pth")))
+    net.load_state_dict(copyStateDict(torch.load(args.load_model)))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/CRAFT_net_050000.pth')))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/craft_mlt_25k.pth')))
