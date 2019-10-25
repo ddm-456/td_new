@@ -5,6 +5,7 @@ result/*
 *.pth
 *.tar
 *.txt
+*.zip
 *.log
 data/test/icdar2013/*.jpg
 data/test/icdar2015/*.jpg

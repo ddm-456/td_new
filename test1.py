@@ -22,7 +22,7 @@ from skimage import io
 import numpy as np
 import craft_utils
 import imgproc
-import file_utils
+import file_utils1 as file_utils
 import json
 import zipfile
 
@@ -46,7 +46,6 @@ def str2bool(v):
 
 
 """ For test images in a folder """
-image_list, _, _ = file_utils.get_files('./data/icdar15/test_images')
 
 result_folder = './result/'
 if not os.path.isdir(result_folder):
@@ -99,6 +98,7 @@ def test_net(net, image, text_threshold, link_threshold, low_text, cuda, poly, a
 
 
 def test(modelpara, result_folder=None, args=None):
+    image_list, _, _ = file_utils.get_files(args.test_folder)
     # load net
     net = CRAFT()     # initialize
 
@@ -137,7 +137,42 @@ def test(modelpara, result_folder=None, args=None):
 
 if __name__ == "__main__":
 
+    parser = argparse.ArgumentParser(description='CRAFT reimplementation')
 
 
-    test(args.trained_model)
-    getresult()
+    parser.add_argument('--resume', default=None, type=str,
+                        help='Checkpoint state_dict file to resume training from')
+    parser.add_argument('--batch_size', default=128, type = int,
+                        help='batch size of training')
+    #parser.add_argument('--cdua', default=True, type=str2bool,
+                        #help='Use CUDA to train model')
+    parser.add_argument('--lr', '--learning-rate', default=3.2768e-5, type=float,
+                        help='initial learning rate')
+    parser.add_argument('--momentum', default=0.9, type=float,
+                        help='Momentum value for optim')
+    parser.add_argument('--weight_decay', default=5e-4, type=float,
+                        help='Weight decay for SGD')
+    parser.add_argument('--gamma', default=0.1, type=float,
+                        help='Gamma update for SGD')
+    parser.add_argument('--num_workers', default=32, type=int,
+                        help='Number of workers used in dataloading')
+
+    parser.add_argument('--config', type=str, default='cfgs/synth_exp001.yaml')
+    parser.add_argument('--trained_model', default='./craft_mlt_25k.pth', type=str, help='pretrained model')
+    parser.add_argument('--text_threshold', default=0.7, type=float, help='text confidence threshold')
+    parser.add_argument('--low_text', default=0.4, type=float, help='text low-bound score')
+    parser.add_argument('--link_threshold', default=0.4, type=float, help='link confidence threshold')
+    parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
+    parser.add_argument('--canvas_size', default=2240, type=int, help='image size for inference')
+    parser.add_argument('--mag_ratio', default=2, type=float, help='image magnification ratio')
+    parser.add_argument('--poly', default=False, action='store_true', help='enable polygon type')
+    parser.add_argument('--show_time', default=False, action='store_true', help='show processing time')
+    parser.add_argument('--test_folder', default='/data/', type=str, help='folder path to input images')
+
+
+    args = parser.parse_args()
+
+
+
+
+    test(args.trained_model, "./result/", args)
