@@ -472,13 +472,15 @@ class ICDAR2013(craft_base_dataset):
                 if words[i] == '###' or len(words[i].strip()) == 0:
                     cv2.fillPoly(confidence_mask, [np.int32(word_bboxes[i])], (0))
             for i in range(len(word_bboxes)):
-                if words[i] == '###' or len(words[i].strip()) == 0:
+                if len(words[i].strip()) == 0:
                     continue
                 pursedo_bboxes, bbox_region_scores, confidence = self.inference_pursedo_bboxes(self.net, image,
                                                                                                word_bboxes[i],
                                                                                                words[i],
                                                                                                gt_path,
                                                                                                viz=self.viz)
+                if words[i] == '###':
+                    confidence.fill(0.2)
                 confidences.append(confidence)
                 cv2.fillPoly(confidence_mask, [np.int32(word_bboxes[i])], (confidence))
                 new_words.append(words[i])
@@ -630,23 +632,14 @@ if __name__ == '__main__':
     # image_origin, target_gaussian_heatmap, target_gaussian_affinity_heatmap, mask = next(train_batch)
     from craft import CRAFT
     from torchutil import copyStateDict
-    import argparse
-    parser = argparse.ArgumentParser(description='123')
-    parser.add_argument('--load_model', default='', type=str, help='folder path to input images')
-
-
-    args = parser.parse_args()
-
-
-
 
     net = CRAFT(freeze=True)
     net.load_state_dict(
-        copyStateDict(torch.load(args.load_model)))
+        copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
     net = net.cuda()
     net = torch.nn.DataParallel(net)
     net.eval()
-    dataloader = ICDAR2015(net, './data/icdar15/train_images/', target_size=768, viz=True)
+    dataloader = ICDAR2015(net, '/data/CRAFT-pytorch/icdar2015', target_size=768, viz=True)
     train_loader = torch.utils.data.DataLoader(
         dataloader,
         batch_size=1,
