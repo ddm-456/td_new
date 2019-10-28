@@ -48,7 +48,7 @@ def random_scale(img, bboxes, min_size):
     # if ratio > 0.5:
     #     image = rescale_img(img.copy(), bboxes, h, w)
     #     return image
-   scale = 1.0
+    scale = 1.0
     if max(h, w) > 1280:
         scale = 1280.0 / max(h, w)
     scale1 = np.random.randint(5, 20)/10.
