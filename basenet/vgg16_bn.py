@@ -53,7 +53,7 @@ class vgg16_bn(torch.nn.Module):
                 param.requires_grad = False
 
     def forward(self, X):
-        h = self.slice1(X)
+        h = self.slice1(X.contiguous())
         h_relu2_2 = h
         h = self.slice2(h)
         h_relu3_2 = h

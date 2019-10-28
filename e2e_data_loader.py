@@ -56,7 +56,7 @@ def get_region(img, bbox):
 def dumpRotateImage(img, degree, pt1, pt2, pt3, pt4):
     height, width = img.shape[:2]
     heightNew = int(width * fabs(sin(radians(degree))) + height * fabs(cos(radians(degree))))
-    widthNew = int(height * fabs(sin(radians(degee))) + height * fabs(cos(radians(degree))))
+    widthNew = int(height * fabs(sin(radians(degree))) + height * fabs(cos(radians(degree))))
 
     matRotation = cv2.getRotationMatrix2D((width // 2, height // 2), degree, 1)
     matRotation[0, 2] += (widthNew - width) // 2
@@ -126,24 +126,26 @@ def rescale_img(img, box, h, w):
     box *= scale
     return image
 
-def random_scale(img, bboxes, min_size):
+def random_scale(img, bboxes, min_size, word_box=None):
     h, w = img.shape[0:2]
-    # ratio, _ = ratio_area(h, w, bboxes)
-    # if ratio > 0.5:
-    #     image = rescale_img(img.copy(), bboxes, h, w)
-    #     return image
-    scale = 1.0
     if max(h, w) > 1280:
         scale = 1280.0 / max(h, w)
-    random_scale = np.array([0.5, 1.0, 1.5, 2.0])
-    scale1 = np.random.choice(random_scale)
-    if min(h, w) * scale * scale1 <= min_size:
-        scale = (min_size + 10) * 1.0 / min(h, w)
-    else:
-        scale = scale * scale1
+        img = cv2.resize(img, dsize=None, fx=scale, fy=scale)
+        bboxes *= scale
+        if word_box is not None:
+            word_box *=scale
+
+    h, w = img.shape[0:2]
+    random_scale = np.array([1.0])
+    scale = np.random.choice(random_scale)
+    if max(h, w) * scale <= min_size:
+        scale = (min_size) * 1.0 / max(h, w)
     bboxes *= scale
+    if word_box is not None:
+        word_box *= scale
     img = cv2.resize(img, dsize=None, fx=scale, fy=scale)
     return img
+
 
 def padding_image(image,imgsize):
     length = max(image.shape[0:2])
@@ -452,20 +454,36 @@ class craft_base_dataset(data.Dataset):
         confidence_mask_torch = torch.from_numpy(confidence_mask).float()
         return image, region_scores_torch, affinity_scores_torch, confidence_mask_torch, confidences
 
+def random_pad(imgs, img_size):
+    h, w = imgs[0].shape[0:2]
+    th, tw = img_size
+    if w == tw and h == th:
+        return imgs
+    for idx in range(len(imgs)):
+        if len(imgs[idx].shape) == 3:
+            imgs_new = np.zeros((th, tw, 3), dtype=imgs[idx].dtype)
+        else:
+            imgs_new = np.zeros((th, tw), dtype=imgs[idx].dtype)
+        imgs_new[:h, :w] = imgs[idx]
+        imgs[idx] = imgs_new
+    return imgs
+
+
 
 class Synth80k(craft_base_dataset):
 
-    def __init__(self, synthtext_folder, target_size=768, with_box=False, viz=False, debug=False):
+    def __init__(self, synthtext_folder, target_size=768, with_word=False, viz=False, debug=False):
         super(Synth80k, self).__init__(target_size, viz, debug)
         self.synthtext_folder = synthtext_folder
         gt = scio.loadmat(os.path.join(synthtext_folder, 'gt.mat'))
         self.charbox = gt['charBB'][0]
         self.image = gt['imnames'][0]
         self.imgtxt = gt['txt'][0]
-        self.with_box = with_box
+        self.with_word = with_word
+        self.wordbox = gt['wordBB'][0]
 
     def __getitem__(self, index):
-        if self.with_box is True:
+        if self.with_word is True:
             return self.pull_item_with_box(index)
         else:
             return self.pull_item(index)
@@ -515,8 +533,9 @@ class Synth80k(craft_base_dataset):
         image = cv2.imread(img_path, cv2.IMREAD_COLOR)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         _charbox = self.charbox[index].transpose((2, 1, 0))
+
+        _wordbox = self.wordbox[index]
         try:
-            _wordbox = self.wordbox[index]
             if len(_wordbox.shape) == 3:
                 _wordbox = _wordbox.transpose((2, 1, 0))
             else:
@@ -524,7 +543,7 @@ class Synth80k(craft_base_dataset):
         except:
             print("wordbox transpose index {}".format(index))
 
-        image = random_scale(image, _charbox, self.target_size, word_box=_wordbox)
+        #image = random_scale(image, _charbox, self.target_size, word_box=_wordbox)
 
         words = [re.split(' \n|\n |\n| ', t.strip()) for t in self.imgtxt[index]]
         words = list(itertools.chain(*words))
@@ -539,7 +558,7 @@ class Synth80k(craft_base_dataset):
             bboxes = np.array(bboxes)
             character_bboxes.append(bboxes)
             confidences.append(1.0)
-        word_bboxes = _word_box
+        word_bboxes = _wordbox
 
         return image, character_bboxes, word_bboxes, words, np.ones((image.shape[0], image.shape[1]), np.float32), confidences
 
@@ -584,6 +603,7 @@ class Synth80k(craft_base_dataset):
         #random_transforms = random_crop(random_transforms, (self.target_size, self.target_size), character_bboxes)
         #random_transforms = random_horizontal_flip(random_transforms)
         #random_transforms = random_rotate(random_transforms)
+        random_transforms = random_pad(random_transforms, (self.target_size, self.target_size))
 
         cvimage, region_scores, affinity_scores, confidence_mask, word_region = random_transforms
 

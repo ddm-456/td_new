@@ -223,7 +223,7 @@ if __name__ == '__main__':
     net.train()
 
     reco_model, converter, reco_criterion, reco_optimizer = generate_recognition_model(args)
-    reco_model = torch.nn.DataParallel(reco_model, device_idx=range(torch.cuda.device_count()).cuda())
+    reco_model = torch.nn.DataParallel(reco_model, range(torch.cuda.device_count())).cuda()
     step_index = 0
 
 
@@ -288,6 +288,7 @@ if __name__ == '__main__':
 
 
             images = Variable(images.type(torch.FloatTensor)).cuda()
+            images = images.contiguous()
             gh_label = gh_label.type(torch.FloatTensor)
             gah_label = gah_label.type(torch.FloatTensor)
             gh_label = Variable(gh_label).cuda()
@@ -298,7 +299,7 @@ if __name__ == '__main__':
             # affinity_mask = affinity_mask.type(torch.FloatTensor)
             # affinity_mask = Variable(affinity_mask).cuda()
 
-            out, _ = net(images)
+            out, _ = net(images.contiguous())
 
             optimizer.zero_grad()
 
