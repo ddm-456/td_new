@@ -24,6 +24,7 @@ from test import test
 
 from math import exp
 from e2e_data_loader import ICDAR2015, Synth80k, ICDAR2013
+from e2e_data_loader import my_collate, get_region, resize_pad
 
 ###import file#######
 from mseloss import Maploss
@@ -251,7 +252,27 @@ if __name__ == '__main__':
 
             batch_size = word_region_torch.size(0)
             word_images = []
-            if index % 20000 == 0 and index != 0:
+            word_labels = []
+            for batch_index in range(batch_size):
+                for word_index in range(len(words[batch_index])):
+                    bbox = (word_region_torch[batch_index] == word_index+1).nonzero().numpy()
+                    if len(bbox) == 4:
+                        region = get_region(images[batch_index].numpy().transpose(1, 2, 0), bbox)
+                        region = resize_pad(region, (32, 200)) if region is not None else None
+                    else:
+                        region = None
+                    if region is not None:
+                        region = region.mean(2)[:,:,np.newaxis]
+                        word_images.append(region.transpose(2, 0, 1)[np.newaxis, :,:,:])
+                        word_labels.append(words[batch_index][word_index])
+
+            if len(word_images) > 0:
+                word_images = np.concatenate(word_images, axis=0)
+                word_images = torch.from_numpy(word_images)
+
+
+
+            if index % 10000 == 0 and index != 0:
                 step_index += 1
                 adjust_learning_rate(optimizer, args.gamma, step_index)
             #real_images, real_gh_label, real_gah_label, real_mask = next(batch_real)
@@ -287,6 +308,20 @@ if __name__ == '__main__':
 
             loss.backward()
             optimizer.step()
+            if len(word_images)>0:
+                word_images = word_images.cuda()
+                text, length = converter.encode(word_labels)
+                batch_size = word_images.size(0)
+                preds = reco_model(word_images, text)
+                target = text[:, 1:]
+                cost = reco_criterion(preds.view(-1, preds.shape[-1]), target.contiguous().view(-1))
+                reco_optimizer.zero_grad()
+                cost.backward()
+                torch.nn.utils.clip_grad_norm_(reco_model.parameters(), args.grad_clip)
+                reco_optimizer.step()
+                reco_loss_value.update(cost.item())
+
+
             loss_value.update(loss.item())
             iter_time.update(time.time() - st)
 
@@ -297,17 +332,20 @@ if __name__ == '__main__':
             t_h, t_m = divmod(t_m, 60)
 
             remain_time = '{:02d}:{:02d}:{:02d}'.format(int(t_h), int(t_m), int(t_s))
-
             if index % args.print_freq == 0:
                 logger.info('Iter = [{0}/{1}]\t'
                                 'data time = {batch_time.avg:.3f}\t'
                                 'iter time = {iter_time.avg:.3f}\t'
+                                'reco_loss = {reco_loss.avg:.3f}\t'
                                 'loss = {loss.avg:.4f}\t'.format(
                                     idx, args.max_iters, batch_time=batch_time,
+                                    reco_loss=reco_loss_value,
                                     iter_time=iter_time,
                                     loss=loss_value))
 
                 logger.info("remain_time: {}".format(remain_time))
+
+
 
 
             # if loss < compare_loss:

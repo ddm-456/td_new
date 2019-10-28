@@ -467,6 +467,8 @@ class Synth80k(craft_base_dataset):
     def __getitem__(self, index):
         if self.with_box is True:
             return self.pull_item_with_box(index)
+        else:
+            return self.pull_item(index)
 
     def __len__(self):
         return len(self.imgtxt)
