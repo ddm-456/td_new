@@ -176,7 +176,7 @@ if __name__ == '__main__':
     #net = CRAFT_net
 
     # if args.cdua:
-    net = torch.nn.DataParallel(net,device_ids=[0,1,2,3]).cuda()
+    net = torch.nn.DataParallel(net,device_ids=range(torch.cuda.device_count())).cuda()
     cudnn.benchmark = True
     # realdata = ICDAR2015(net, '/data/CRAFT-pytorch/icdar2015', target_size=768)
     # real_data_loader = torch.utils.data.DataLoader(
@@ -237,6 +237,7 @@ if __name__ == '__main__':
             gah_label = Variable(gah_label).cuda()
             mask = mask.type(torch.FloatTensor)
             mask = Variable(mask).cuda()
+            net.train()
             # affinity_mask = affinity_mask.type(torch.FloatTensor)
             # affinity_mask = Variable(affinity_mask).cuda()
 

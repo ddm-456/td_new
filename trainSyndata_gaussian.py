@@ -23,7 +23,7 @@ from test import test
 
 
 from math import exp
-from data_loader import ICDAR2015, Synth80k, ICDAR2013
+from data_loader_augmentation_gaussian import ICDAR2015, Synth80k, ICDAR2013
 
 ###import file#######
 from mseloss import Maploss

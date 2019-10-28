@@ -8,7 +8,7 @@
 import torch
 import torch.utils.data as data
 import scipy.io as scio
-from gaussian import GaussianTransformer
+from gaussian_new import GaussianTransformer
 from watershed import watershed
 import re
 import itertools
@@ -48,11 +48,10 @@ def random_scale(img, bboxes, min_size):
     # if ratio > 0.5:
     #     image = rescale_img(img.copy(), bboxes, h, w)
     #     return image
-    scale = 1.0
+   scale = 1.0
     if max(h, w) > 1280:
         scale = 1280.0 / max(h, w)
-    random_scale = np.array([0.5, 1.0, 1.5, 2.0])
-    scale1 = np.random.choice(random_scale)
+    scale1 = np.random.randint(5, 20)/10.
     if min(h, w) * scale * scale1 <= min_size:
         scale = (min_size + 10) * 1.0 / min(h, w)
     else:
@@ -60,6 +59,7 @@ def random_scale(img, bboxes, min_size):
     bboxes *= scale
     img = cv2.resize(img, dsize=None, fx=scale, fy=scale)
     return img
+
 
 def padding_image(image,imgsize):
     length = max(image.shape[0:2])
@@ -344,10 +344,10 @@ class craft_base_dataset(data.Dataset):
                            affinity_scores,
                            confidence_mask)
         random_transforms = [image, region_scores, affinity_scores, confidence_mask]
-        random_transforms = random_crop(random_transforms, (self.target_size, self.target_size), character_bboxes)
         random_transforms = random_horizontal_flip(random_transforms)
         random_transforms = random_rotate(random_transforms)
 
+        random_transforms = random_crop(random_transforms, (self.target_size, self.target_size), character_bboxes)
         cvimage, region_scores, affinity_scores, confidence_mask = random_transforms
 
         region_scores = self.resizeGt(region_scores)
@@ -363,8 +363,8 @@ class craft_base_dataset(data.Dataset):
         image = imgproc.normalizeMeanVariance(np.array(image), mean=(0.485, 0.456, 0.406),
                                               variance=(0.229, 0.224, 0.225))
         image = torch.from_numpy(image).float().permute(2, 0, 1)
-        region_scores_torch = torch.from_numpy(region_scores / 255).float()
-        affinity_scores_torch = torch.from_numpy(affinity_scores / 255).float()
+        region_scores_torch = torch.from_numpy(region_scores / 255.).float()
+        affinity_scores_torch = torch.from_numpy(affinity_scores / 255.).float()
         confidence_mask_torch = torch.from_numpy(confidence_mask).float()
         return image, region_scores_torch, affinity_scores_torch, confidence_mask_torch, confidences
 
