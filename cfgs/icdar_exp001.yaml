@@ -1,8 +1,8 @@
 common:
     exp_name: icdar_exp001
-    lr: 3.2768e-5
-    num_epoch: 1000
+    lr: 0.000005
+    num_epoch: 400
     print_freq: 10
     target_size: 768
     batch_size: 5
-    eval_iter: 40
+    eval_iter: 100

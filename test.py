@@ -55,7 +55,7 @@ if not os.path.isdir(result_folder):
 def test_net(net, image, text_threshold, link_threshold, low_text, cuda, poly, args=None):
     t0 = time.time()
 
-    # resize
+    # resiz, ie
     img_resized, target_ratio, size_heatmap = imgproc.resize_aspect_ratio(image, args.canvas_size, interpolation=cv2.INTER_LINEAR, mag_ratio=args.mag_ratio)
     ratio_h = ratio_w = 1 / target_ratio
 

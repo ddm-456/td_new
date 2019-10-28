@@ -23,7 +23,7 @@ from test import test
 
 
 from math import exp
-from data_loader import ICDAR2015, Synth80k, ICDAR2013
+from data_loader_augmentation_gaussian import ICDAR2015, Synth80k, ICDAR2013
 
 ###import file#######
 from mseloss import Maploss
@@ -212,8 +212,8 @@ if __name__ == '__main__':
 
         for index, (images, gh_label, gah_label, mask, _) in enumerate(train_loader):
 
+            index = len(train_loader) * epoch + index
             st = time.time()
-            index = epoch * len(train_loader) + index
             if index % 10000 == 0 and index != 0:
                 step_index += 1
                 adjust_learning_rate(optimizer, args.gamma, step_index)
