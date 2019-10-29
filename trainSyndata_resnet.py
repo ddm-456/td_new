@@ -20,7 +20,7 @@ import random
 import h5py
 import re
 import water
-from test import test
+from test_resnet import test
 
 
 from math import exp
