@@ -108,7 +108,7 @@ def generate_recognition_model(args):
         filtered_parameters.append(p)
         params_num.append(np.prod(p.size()))
     print('Trainable params num: {}'.format(sum(params_num)))
-    optimizer = torch.optim.Adam(filtered_parameters, lr = args.reco_lr, betas = (args.reco_beta1, 0.999))
+    optimizer = torch.optim.Adadelta(filtered_parameters, lr = args.reco_lr, rho=0.95, eps=0.999)
     return model, converter, criterion, optimizer
 
 
@@ -223,7 +223,7 @@ if __name__ == '__main__':
     net.train()
 
     reco_model, converter, reco_criterion, reco_optimizer = generate_recognition_model(args)
-    reco_model = torch.nn.DataParallel(reco_model, device_idx=range(torch.cuda.device_count()).cuda())
+    reco_model = torch.nn.DataParallel(reco_model, range(torch.cuda.device_count())).cuda()
     step_index = 0
 
 
@@ -271,7 +271,6 @@ if __name__ == '__main__':
                 word_images = torch.from_numpy(word_images)
 
 
-
             if index % 10000 == 0 and index != 0:
                 step_index += 1
                 adjust_learning_rate(optimizer, args.gamma, step_index)
@@ -288,6 +287,7 @@ if __name__ == '__main__':
 
 
             images = Variable(images.type(torch.FloatTensor)).cuda()
+            images = images.contiguous()
             gh_label = gh_label.type(torch.FloatTensor)
             gah_label = gah_label.type(torch.FloatTensor)
             gh_label = Variable(gh_label).cuda()
@@ -298,7 +298,7 @@ if __name__ == '__main__':
             # affinity_mask = affinity_mask.type(torch.FloatTensor)
             # affinity_mask = Variable(affinity_mask).cuda()
 
-            out, _ = net(images)
+            out, _ = net(images.contiguous())
 
             optimizer.zero_grad()
 
@@ -320,7 +320,6 @@ if __name__ == '__main__':
                 torch.nn.utils.clip_grad_norm_(reco_model.parameters(), args.grad_clip)
                 reco_optimizer.step()
                 reco_loss_value.update(cost.item())
-
 
             loss_value.update(loss.item())
             iter_time.update(time.time() - st)

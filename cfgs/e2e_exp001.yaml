@@ -7,10 +7,13 @@ common:
     num_iter: 300000
     valInterval: 2000
     continue_model: False
-    reco_lr: 0.1
+    reco_lr: 0.5
     lr: 3.2768e-5
     num_epoch: 1000
     print_freq: 10
+    batch_size: 8
+    eval_iter: 2000
+    target_size: 768
 
     adam: False
     reco_beta1: 0.9
@@ -25,7 +28,7 @@ common:
     batch_max_length: 40
     imgH: 32
     imgW: 100
-    rgb: True
+    rgb: False
     character: 0123456789abcdefghijklmnopqrstuvwxyz 
     sensitive:  
     PAD: 
