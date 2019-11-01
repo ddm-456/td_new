@@ -4,6 +4,7 @@ import sys
 import torch
 import torch.utils.data as data
 import cv2
+from basenet.fcn_resnet import ModelBuilder, SegmentationModule
 import os.path as osp
 import time
 import numpy as np
@@ -19,12 +20,11 @@ import random
 import h5py
 import re
 import water
-from test import test
+from test_resnet import test
 
 
 from math import exp
-from e2e_data_loader import ICDAR2015, Synth80k, ICDAR2013
-from e2e_data_loader import my_collate, get_region, resize_pad
+from data_loader import ICDAR2015, Synth80k, ICDAR2013
 
 ###import file#######
 from mseloss import Maploss
@@ -42,9 +42,6 @@ from craft import CRAFT
 from torch.autograd import Variable
 from multiprocessing import Pool
 import os
-from utils import CTCLabelConverter, AttnLabelConverter
-from recognition_model import Model
-from imgproc import denormalizeMeanVariance
 #3.2768e-5
 random.seed(42)
 
@@ -85,32 +82,6 @@ def adjust_learning_rate(optimizer, gamma, step):
     print(lr)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
-
-
-def generate_recognition_model(args):
-    if 'CTC' in args.Prediction:
-        converter = CTCLabelConverter(args.character)
-    else:
-        converter = AttnLabelConverter(args.character)
-    args.num_class = len(converter.character)
-
-    if args.rgb:
-        args.input_channel = 3
-    model = Model(args)
-    if 'CTC' in args.Prediction:
-        criterion = torch.nn.CrossEntropyLoss(ignore_index=0).cuda()
-    else:
-        criterion = torch.nn.CrossEntropyLoss(ignore_index=0).cuda()
-
-    filtered_parameters = []
-    params_num = []
-    for p in filter(lambda p: p.requires_grad, model.parameters()):
-        filtered_parameters.append(p)
-        params_num.append(np.prod(p.size()))
-    print('Trainable params num: {}'.format(sum(params_num)))
-    optimizer = torch.optim.Adadelta(filtered_parameters, lr = args.reco_lr, rho=0.95, eps=0.999)
-    return model, converter, criterion, optimizer
-
 
 
 if __name__ == '__main__':
@@ -174,20 +145,34 @@ if __name__ == '__main__':
     # imgtxt = box['txt'][0]
 
     #dataloader = syndata(imgname, charbox, imgtxt)
-    dataloader = Synth80k('./data/SynthText', target_size = args.target_size, with_word=True)
+    dataloader = Synth80k('./data/SynthText', target_size = args.target_size)
     train_loader = torch.utils.data.DataLoader(
         dataloader,
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=4,
-        collate_fn = my_collate,
         drop_last=True,
         pin_memory=True)
     #batch_syn = iter(train_loader)
     # prefetcher = data_prefetcher(dataloader)
     # input, target1, target2 = prefetcher.next()
     #print(input.size())
-    net = CRAFT()
+    builder = ModelBuilder()
+    net_encoder = builder.build_encoder(
+        arch='resnet50dilated',
+        fc_dim=2048,
+        weights='',
+    )
+
+    net_decoder = builder.build_decoder(
+        arch='c1',
+        weights='',
+        fc_dim=2048,
+        num_class=2,
+    )
+    net = SegmentationModule(
+        net_encoder, net_decoder, False
+    )
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/CRAFT_net_050000.pth')))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/craft_mlt_25k.pth')))
@@ -205,7 +190,7 @@ if __name__ == '__main__':
     #net = CRAFT_net
 
     # if args.cdua:
-    net = torch.nn.DataParallel(net,range(torch.cuda.device_count())).cuda()
+    net = torch.nn.DataParallel(net,device_ids=range(torch.cuda.device_count())).cuda()
     cudnn.benchmark = True
     # realdata = ICDAR2015(net, '/data/CRAFT-pytorch/icdar2015', target_size=768)
     # real_data_loader = torch.utils.data.DataLoader(
@@ -222,8 +207,7 @@ if __name__ == '__main__':
     #criterion = torch.nn.MSELoss(reduce=True, size_average=True)
     net.train()
 
-    reco_model, converter, reco_criterion, reco_optimizer = generate_recognition_model(args)
-    reco_model = torch.nn.DataParallel(reco_model, range(torch.cuda.device_count())).cuda()
+
     step_index = 0
 
 
@@ -235,7 +219,6 @@ if __name__ == '__main__':
     iter_time = AverageMeter(100)
 
     loss_value = AverageMeter(10)
-    reco_loss_value = AverageMeter(10)
     args.max_iters = args.num_epoch * len(train_loader)
 
     for epoch in range(args.num_epoch):
@@ -243,34 +226,10 @@ if __name__ == '__main__':
         #     step_index += 1
         #     adjust_learning_rate(optimizer, args.gamma, step_index)
 
-        for index, batches in enumerate(train_loader):
+        for index, (images, gh_label, gah_label, mask, _) in enumerate(train_loader):
 
             st = time.time()
-            images, gh_label, gah_label, mask,_,  word_region_torch = batches['torch_data']
-            words = batches['list_data']
-            bbox = (word_region_torch[0] == 1).nonzero().numpy()
-
-            batch_size = word_region_torch.size(0)
-            word_images = []
-            word_labels = []
-            for batch_index in range(batch_size):
-                for word_index in range(len(words[batch_index])):
-                    bbox = (word_region_torch[batch_index] == word_index+1).nonzero().numpy()
-                    if len(bbox) == 4:
-                        region = get_region(images[batch_index].numpy().transpose(1, 2, 0), bbox)
-                        region = resize_pad(region, (32, 200)) if region is not None else None
-                    else:
-                        region = None
-                    if region is not None:
-                        region = region.mean(2)[:,:,np.newaxis]
-                        word_images.append(region.transpose(2, 0, 1)[np.newaxis, :,:,:])
-                        word_labels.append(words[batch_index][word_index])
-
-            if len(word_images) > 0:
-                word_images = np.concatenate(word_images, axis=0)
-                word_images = torch.from_numpy(word_images)
-
-
+            index = epoch * len(train_loader) + index
             if index % 10000 == 0 and index != 0:
                 step_index += 1
                 adjust_learning_rate(optimizer, args.gamma, step_index)
@@ -287,7 +246,6 @@ if __name__ == '__main__':
 
 
             images = Variable(images.type(torch.FloatTensor)).cuda()
-            images = images.contiguous()
             gh_label = gh_label.type(torch.FloatTensor)
             gah_label = gah_label.type(torch.FloatTensor)
             gh_label = Variable(gh_label).cuda()
@@ -298,29 +256,17 @@ if __name__ == '__main__':
             # affinity_mask = affinity_mask.type(torch.FloatTensor)
             # affinity_mask = Variable(affinity_mask).cuda()
 
-            out, _ = net(images.contiguous())
+            out = net(images)
+            out = torch.nn.functional.upsample(out, gh_label.size()[1:3], mode='bilinear')
 
             optimizer.zero_grad()
 
-            out1 = out[:, :, :, 0].cuda()
-            out2 = out[:, :, :, 1].cuda()
+            out1 = out[:, 0, :, :].cuda()
+            out2 = out[:, 1, :, :].cuda()
             loss = criterion(gh_label, gah_label, out1, out2, mask)
 
             loss.backward()
             optimizer.step()
-            if len(word_images)>0:
-                word_images = word_images.cuda()
-                text, length = converter.encode(word_labels)
-                batch_size = word_images.size(0)
-                preds = reco_model(word_images, text)
-                target = text[:, 1:]
-                cost = reco_criterion(preds.view(-1, preds.shape[-1]), target.contiguous().view(-1))
-                reco_optimizer.zero_grad()
-                cost.backward()
-                torch.nn.utils.clip_grad_norm_(reco_model.parameters(), args.grad_clip)
-                reco_optimizer.step()
-                reco_loss_value.update(cost.item())
-
             loss_value.update(loss.item())
             iter_time.update(time.time() - st)
 
@@ -331,20 +277,17 @@ if __name__ == '__main__':
             t_h, t_m = divmod(t_m, 60)
 
             remain_time = '{:02d}:{:02d}:{:02d}'.format(int(t_h), int(t_m), int(t_s))
+
             if index % args.print_freq == 0:
                 logger.info('Iter = [{0}/{1}]\t'
                                 'data time = {batch_time.avg:.3f}\t'
                                 'iter time = {iter_time.avg:.3f}\t'
-                                'reco_loss = {reco_loss.avg:.3f}\t'
                                 'loss = {loss.avg:.4f}\t'.format(
                                     idx, args.max_iters, batch_time=batch_time,
-                                    reco_loss=reco_loss_value,
                                     iter_time=iter_time,
                                     loss=loss_value))
 
                 logger.info("remain_time: {}".format(remain_time))
-
-
 
 
             # if loss < compare_loss:

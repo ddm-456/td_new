@@ -7,11 +7,11 @@ common:
     num_iter: 300000
     valInterval: 2000
     continue_model: False
-    reco_lr: 0.1
+    reco_lr: 0.5
     lr: 3.2768e-5
     num_epoch: 1000
     print_freq: 10
-    batch_size: 2
+    batch_size: 8
     eval_iter: 2000
     target_size: 768
 
