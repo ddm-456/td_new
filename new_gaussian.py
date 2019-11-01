@@ -2,6 +2,7 @@ from math import exp
 import numpy as np
 import cv2
 import os
+import pdb
 import imgproc
 
 
@@ -15,28 +16,25 @@ class GaussianTransformer(object):
         self.imgSize = imgSize
         self.standardGaussianHeat = self._gen_gaussian_heatmap(imgSize, distanceRatio)
 
-        _, binary = cv2.threshold(self.standardGaussianHeat, region_threshold * 255, 255, 0)
-        np_contours = np.roll(np.array(np.where(binary != 0)), 1, axis=0).transpose().reshape(-1, 2)
-        x, y, w, h = cv2.boundingRect(np_contours)
-        self.regionbox = np.array([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], dtype=np.int32)
-        # print("regionbox", self.regionbox)
-        _, binary = cv2.threshold(self.standardGaussianHeat, affinity_threshold * 255, 255, 0)
-        np_contours = np.roll(np.array(np.where(binary != 0)), 1, axis=0).transpose().reshape(-1, 2)
-        x, y, w, h = cv2.boundingRect(np_contours)
-        self.affinitybox = np.array([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], dtype=np.int32)
-        # print("affinitybox", self.affinitybox)
-        self.oribox = np.array([[0, 0, 1], [imgSize - 1, 0, 1], [imgSize - 1, imgSize - 1, 1], [0, imgSize - 1, 1]],
-                               dtype=np.int32)
+
+    def four_point_transform(self, image, pts):
+        max_x, max_y = np.max(pts[:, 0]).astype(np.int32), np.max(pts[:, 1]).astype(np.int32)
+        dst = np.array([
+            [0, 0],
+            [image.shape[1] - 1, 0],
+            [image.shape[1] - 1, image.shape[0] - 1],
+            [0, image.shape[0] - 1]], dtype='float32')
+        M = cv2.getPerspectiveTransform(dst, pts)
+        warped = cv2.warpPerspective(image, M, (max_x, max_y))
+        return warped
+
 
     def _gen_gaussian_heatmap(self, imgSize, distanceRatio):
-        heat = np.zeros((imgSize, imgSize), np.float32)
-        print(imgSize)
-        center = imgSize/2.
-        for i_ in range(imgSize):
-            for j_ in range(imgSize):
-                heat[i_, j_] = 1/2/np.pi/(30**2) * np.exp(
-                        -1 / 2 * ((i_ - center) ** 2 + (j_ - center) **2) / (30**2))
-        heat =(heat / np.max(heat) * 255).astype(np.uint8)
+        heat = np.zeros((200, 200), np.float32)
+        for i in range(200):
+            for j in range(200):
+                heat[i,j] = 1/2/np.pi / (40**2) * np.exp(-1/2*((i - 100)**2 + (j-100)**2) / (40**2))
+        heat = (heat / np.max(heat) * 255).astype(np.float32)
         return heat
 
     def _test(self):
@@ -56,77 +54,36 @@ class GaussianTransformer(object):
         threshhold_guassian = cv2.applyColorMap(gaussian_heatmap, cv2.COLORMAP_JET)
         cv2.imwrite(os.path.join(images_folder, 'test_guassian.jpg'), threshhold_guassian)
 
-    def add_region_character(self, image, target_bbox, regionbox=None):
+    def add_region_character(self, image, target_bbox):
 
         if np.any(target_bbox < 0) or np.any(target_bbox[:, 0] > image.shape[1]) or np.any(
                 target_bbox[:, 1] > image.shape[0]):
             return image
         affi = False
-        if regionbox is None:
-            regionbox = self.regionbox.copy()
-        else:
-            affi = True
 
-        M = cv2.getPerspectiveTransform(np.float32(regionbox), np.float32(target_bbox))
-        oribox = np.array(
-            [[[0, 0], [self.imgSize - 1, 0], [self.imgSize - 1, self.imgSize - 1], [0, self.imgSize - 1]]],
-            dtype=np.float32)
-        test1 = cv2.perspectiveTransform(np.array([regionbox], np.float32), M)[0]
-        real_target_box = cv2.perspectiveTransform(oribox, M)[0]
-        # print("test\ntarget_bbox", target_bbox, "\ntest1", test1, "\nreal_target_box", real_target_box)
-        real_target_box = np.int32(real_target_box)
-        real_target_box[:, 0] = np.clip(real_target_box[:, 0], 0, image.shape[1])
-        real_target_box[:, 1] = np.clip(real_target_box[:, 1], 0, image.shape[0])
+        # enlarge point
 
-        # warped = cv2.warpPerspective(self.standardGaussianHeat.copy(), M, (image.shape[1], image.shape[0]))
-        # warped = np.array(warped, np.uint8)
-        # image = np.where(warped > image, warped, image)
-        if np.any(target_bbox[0] < real_target_box[0]) or (
-                target_bbox[3, 0] < real_target_box[3, 0] or target_bbox[3, 1] > real_target_box[3, 1]) or (
-                target_bbox[1, 0] > real_target_box[1, 0] or target_bbox[1, 1] < real_target_box[1, 1]) or (
-                target_bbox[2, 0] > real_target_box[2, 0] or target_bbox[2, 1] > real_target_box[2, 1]):
-            # if False:
-            warped = cv2.warpPerspective(self.standardGaussianHeat.copy(), M, (image.shape[1], image.shape[0]))
-            warped = np.array(warped, np.uint8)
-            image = np.where(warped > image, warped, image)
-            # _M = cv2.getPerspectiveTransform(np.float32(regionbox), np.float32(_target_box))
-            # warped = cv2.warpPerspective(self.standardGaussianHeat.copy(), _M, (width, height))
-            # warped = np.array(warped, np.uint8)
-            #
-            # # if affi:
-            # # print("warped", warped.shape, real_target_box, target_bbox, _target_box)
-            # # cv2.imshow("1123", warped)
-            # # cv2.waitKey()
-            # image[ymin:ymax, xmin:xmax] = np.where(warped > image[ymin:ymax, xmin:xmax], warped,
-            #                                        image[ymin:ymax, xmin:xmax])
-        else:
-            xmin = real_target_box[:, 0].min()
-            xmax = real_target_box[:, 0].max()
-            ymin = real_target_box[:, 1].min()
-            ymax = real_target_box[:, 1].max()
+        w, h = image.shape[:2][::-1]
 
-            width = xmax - xmin
-            height = ymax - ymin
-            _target_box = target_bbox.copy()
-            _target_box[:, 0] -= xmin
-            _target_box[:, 1] -= ymin
-            _M = cv2.getPerspectiveTransform(np.float32(regionbox), np.float32(_target_box))
-            warped = cv2.warpPerspective(self.standardGaussianHeat.copy(), _M, (width, height))
-            warped = np.array(warped, np.uint8)
-            if warped.shape[0] != (ymax - ymin) or warped.shape[1] != (xmax - xmin):
-                print("region (%d:%d,%d:%d) warped shape (%d,%d)" % (
-                    ymin, ymax, xmin, xmax, warped.shape[1], warped.shape[0]))
-                return image
-            # if affi:
-            # print("warped", warped.shape, real_target_box, target_bbox, _target_box)
-            # cv2.imshow("1123", warped)
-            # cv2.waitKey()
-            image[ymin:ymax, xmin:xmax] = np.where(warped > image[ymin:ymax, xmin:xmax], warped,
-                                                   image[ymin:ymax, xmin:xmax])
+        center = np.mean(target_bbox, axis=0)
+        target_bbox = target_bbox + (target_bbox - center)*0.5
+        target_bbox[:,0] = np.clip(target_bbox[:,0], 0, w)
+        target_bbox[:,1] = np.clip(target_bbox[:,1], 0, h)
+
+        top_left = np.array([np.min(target_bbox[:, 0]), np.min(target_bbox[:, 1])]).astype(np.int32)
+        target_bbox -= top_left[None, :]
+        transformed = self.four_point_transform(self.standardGaussianHeat, target_bbox.astype(np.float32))
+        warped = np.zeros(image.shape, dtype= np.float32)
+        start_row = max(top_left[1], 0) - top_left[1]
+        start_col = max(top_left[0], 0) - top_left[0]
+        end_row = min(top_left[1] + transformed.shape[0], warped.shape[0])
+        end_col = min(top_left[0] + transformed.shape[1], warped.shape[1])
+        warped[max(top_left[1], 0): end_row, max(top_left[0], 0):end_col] += transformed[start_row:end_row - top_left[1], start_col:end_col - top_left[0]]
+        image = np.where(warped>image, warped, image)
         return image
 
     def add_affinity_character(self, image, target_bbox):
-        return self.add_region_character(image, target_bbox, self.affinitybox)
+        return self.add_region_character(image, target_bbox)
 
     def add_affinity(self, image, bbox_1, bbox_2):
         center_1, center_2 = np.mean(bbox_1, axis=0), np.mean(bbox_2, axis=0)

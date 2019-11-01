@@ -89,6 +89,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--resume', default=None, type=str,
                         help='Checkpoint state_dict file to resume training from')
+    parser.add_argument('--load_model', default='Syndata.pth', type=str)
     parser.add_argument('--batch_size', default=128, type = int,
                         help='batch size of training')
     #parser.add_argument('--cdua', default=True, type=str2bool,
@@ -152,11 +153,12 @@ if __name__ == '__main__':
         num_workers=4,
         drop_last=True,
         pin_memory=True)
-    #batch_syn = iter(train_loader)
+    batch_syn = iter(train_loader)
     # prefetcher = data_prefetcher(dataloader)
     # input, target1, target2 = prefetcher.next()
     #print(input.size())
-    net = CRAFT()
+    net = CRAFT(freeze=True)
+    net.load_state_dict(copyStateDict(torch.load(args.load_model)))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/CRAFT_net_050000.pth')))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/craft_mlt_25k.pth')))
@@ -184,7 +186,14 @@ if __name__ == '__main__':
     #     num_workers=0,
     #     drop_last=True,
     #     pin_memory=True)
-
+    realdata = ICDAR2015(net, './data/icdar15', target_size=768)
+    real_data_loader = torch.utils.data.DataLoader(
+            realdata,
+            batch_size=args.batch_size*5,
+            shuffle=True,
+            num_workers=0,
+            drop_last=True,
+            pin_memory=True)
 
     optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     criterion = Maploss()
@@ -206,26 +215,18 @@ if __name__ == '__main__':
     args.max_iters = args.num_epoch * len(train_loader)
 
     for epoch in range(args.num_epoch):
-        # if epoch % 50 == 0 and epoch != 0:
-        #     step_index += 1
-        #     adjust_learning_rate(optimizer, args.gamma, step_index)
-
-        for index, (images, gh_label, gah_label, mask, _) in enumerate(train_loader):
-
-            st = time.time()
-            index = epoch*len(train_loader) + index
-            if index % 10000 == 0 and index != 0:
-                step_index += 1
-                adjust_learning_rate(optimizer, args.gamma, step_index)
+        if epoch % 50 == 0 and epoch != 0:
+             step_index += 1
+             adjust_learning_rate(optimizer, args.gamma, step_index)
+        for index, (real_images, real_gh_label, real_gah_label, real_mask, _) in enumerate(real_data_loader):
             #real_images, real_gh_label, real_gah_label, real_mask = next(batch_real)
-            idx = index + epoch * int(len(train_loader) / args.batch_size)
-
-            # syn_images, syn_gh_label, syn_gah_label, syn_mask = next(batch_syn)
-            # images = torch.cat((syn_images,real_images), 0)
-            # gh_label = torch.cat((syn_gh_label, real_gh_label), 0)
-            # gah_label = torch.cat((syn_gah_label, real_gah_label), 0)
-            # mask = torch.cat((syn_mask, real_mask), 0)
-
+            st = time.time()
+            idx = index + epoch * int(len(real_data_loader))
+            syn_images, syn_gh_label, syn_gah_label, syn_mask, __ = next(batch_syn)
+            images = torch.cat((syn_images,real_images), 0)
+            gh_label = torch.cat((syn_gh_label, real_gh_label), 0)
+            gah_label = torch.cat((syn_gah_label, real_gah_label), 0)
+            mask = torch.cat((syn_mask, real_mask), 0)
             #affinity_mask = torch.cat((syn_mask, real_affinity_mask), 0)
 
 
@@ -236,7 +237,7 @@ if __name__ == '__main__':
             gah_label = Variable(gah_label).cuda()
             mask = mask.type(torch.FloatTensor)
             mask = Variable(mask).cuda()
-            batch_time.update(time.time() - st)
+            net.train()
             # affinity_mask = affinity_mask.type(torch.FloatTensor)
             # affinity_mask = Variable(affinity_mask).cuda()
 
@@ -279,11 +280,11 @@ if __name__ == '__main__':
             #     torch.save(net.module.state_dict(),
             #                '/data/CRAFT-pytorch/real_weights/lower_loss.pth'
 
-            if index % args.eval_iter== 0 and index != 0:
-                print('Saving state, index:', index)
+            if idx % args.eval_iter== 0 and idx != 0:
+                print('Saving state, idx:', idx)
                 torch.save(net.module.state_dict(),
-                           './checkpoint/{}/synweights_'.format(args.exp_name) + repr(index) + '.pth')
-                test('./checkpoint/{}/synweights_'.format(args.exp_name) + repr(index) + '.pth', args=args,
+                           './checkpoint/{}/model_'.format(args.exp_name) + repr(idx) + '.pth')
+                test('./checkpoint/{}/model_'.format(args.exp_name) + repr(idx) + '.pth', args=args,
                      result_folder='./checkpoint/{}/result/'.format(args.exp_name))
                 #test('/data/CRAFT-pytorch/craft_mlt_25k.pth')
                 res_dict = getresult('./checkpoint/{}/result/'.format(args.exp_name))
