@@ -70,16 +70,16 @@ class GaussianTransformer(object):
         target_bbox[:,0] = np.clip(target_bbox[:,0], 0, w)
         target_bbox[:,1] = np.clip(target_bbox[:,1], 0, h)
 
-        top_left = np.array([np.min(target_bbox[:, 0]), np.min(target_bbox[:, 1])]).astype(np.int32)
-        target_bbox -= top_left[None, :]
-        transformed = self.four_point_transform(self.standardGaussianHeat, target_bbox.astype(np.float32))
-        warped = np.zeros(image.shape, dtype= np.float32)
-        start_row = max(top_left[1], 0) - top_left[1]
-        start_col = max(top_left[0], 0) - top_left[0]
-        end_row = min(top_left[1] + transformed.shape[0], warped.shape[0])
-        end_col = min(top_left[0] + transformed.shape[1], warped.shape[1])
-        warped[max(top_left[1], 0): end_row, max(top_left[0], 0):end_col] += transformed[start_row:end_row - top_left[1], start_col:end_col - top_left[0]]
-        image = np.where(warped>image, warped, image)
+        dst = np.array([
+            [0, 0],
+            [200 - 1, 0],
+            [200 - 1, 200 - 1],
+            [0, 200 - 1]], dtype='float32')
+        M = cv2.getPerspectiveTransform(dst.astype(np.float32), target_bbox.astype(np.float32))
+        warped = cv2.warpPerspective(self.standardGaussianHeat, M, (w, h))
+        warped = np.clip(warped, 0, 255)
+
+        image = np.maximum(warped, image)
         return image
 
     def add_affinity_character(self, image, target_bbox):
