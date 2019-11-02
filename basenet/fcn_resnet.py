@@ -3,6 +3,7 @@ import torch.nn as nn
 import torchvision
 from . import resnet
 from lib.nn import SynchronizedBatchNorm2d
+from torchutil import *
 BatchNorm2d = SynchronizedBatchNorm2d
 
 
@@ -39,12 +40,14 @@ class ModelBuilder:
     def weights_init(m):
         classname = m.__class__.__name__
         if classname.find('Conv') != -1:
-            nn.init.kaiming_normal_(m.weight.data)
+            nn.init.xavier_uniform_(m.weight.data)
+            if m.bias is not None:
+                m.bias.data.zero_()
         elif classname.find('BatchNorm') != -1:
             m.weight.data.fill_(1.)
-            m.bias.data.fill_(1e-4)
+            m.bias.data.zero_()
         #elif classname.find('Linear') != -1:
-        #    m.weight.data.normal_(0.0, 0.0001)
+        #    m.weight.daita.normal_(0.0, 0.0001)
 
     @staticmethod
     def build_encoder(arch='resnet50dilated', fc_dim=512, weights=''):
@@ -200,7 +203,7 @@ class ResnetDilated(nn.Module):
             orig_resnet.layer3.apply(
                 partial(self._nostride_dilate, dilate=2))
             orig_resnet.layer4.apply(
-                partial(self._nostride_dilate, dilate=4))
+                partial(self._nostride_dilate, dilate=1))
         elif dilate_scale == 16:
             orig_resnet.layer4.apply(
                 partial(self._nostride_dilate, dilate=2))
@@ -220,6 +223,7 @@ class ResnetDilated(nn.Module):
         self.layer2 = orig_resnet.layer2
         self.layer3 = orig_resnet.layer3
         self.layer4 = orig_resnet.layer4
+        init_weights(self.layer4.modules())
 
     def _nostride_dilate(self, m, dilate):
         classname = m.__class__.__name__
@@ -228,8 +232,12 @@ class ResnetDilated(nn.Module):
             if m.stride == (2, 2):
                 m.stride = (1, 1)
                 if m.kernel_size == (3, 3):
-                    m.dilation = (dilate//2, dilate//2)
-                    m.padding = (dilate//2, dilate//2)
+                    if dilate == 1:
+                        m.dilation = (1,1)
+                        m.padding = (1,1)
+                    else:
+                        m.dilation = (dilate//2, dilate//2)
+                        m.padding = (dilate//2, dilate//2)
             # other convoluions
             else:
                 if m.kernel_size == (3, 3):
@@ -319,8 +327,7 @@ class C1DeepSup(nn.Module):
         self.cbr_deepsup = conv3x3_bn_relu(fc_dim // 2, fc_dim // 4, 1)
 
         # last conv
-        self.conv_last = nn.Conv2d(fc_dim // 4, num_class, 1, 1, 0)
-        self.conv_last_deepsup = nn.Conv2d(fc_dim // 4, num_class, 1, 1, 0)
+        self.conv_last = nn.Conv2d(fc_dim // 4, 2, 1, 1, 0)
 
     def forward(self, conv_out, segSize=None):
         conv5 = conv_out[-1]
@@ -328,21 +335,9 @@ class C1DeepSup(nn.Module):
         x = self.cbr(conv5)
         x = self.conv_last(x)
 
-        if self.use_softmax:  # is True during inference
-            x = nn.functional.interpolate(
-                x, size=segSize, mode='bilinear', align_corners=False)
-            x = nn.functional.softmax(x, dim=1)
-            return x
 
-        # deep sup
-        conv4 = conv_out[-2]
-        _ = self.cbr_deepsup(conv4)
-        _ = self.conv_last_deepsup(_)
 
-        x = nn.functional.log_softmax(x, dim=1)
-        _ = nn.functional.log_softmax(_, dim=1)
-
-        return (x, _)
+        return x
 
 
 # last conv

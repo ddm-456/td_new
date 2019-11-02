@@ -213,6 +213,10 @@ if __name__ == '__main__':
         for index, (images, gh_label, gah_label, mask, _) in enumerate(train_loader):
 
             st = time.time()
+<<<<<<< HEAD
+=======
+            index = epoch * len(train_loader) + index
+>>>>>>> FETCH_HEAD
             if index % 10000 == 0 and index != 0:
                 step_index += 1
                 adjust_learning_rate(optimizer, args.gamma, step_index)
@@ -253,7 +257,11 @@ if __name__ == '__main__':
             iter_time.update(time.time() - st)
 
 
+<<<<<<< HEAD
             remain_iter = args.max_iters - (idx + epoch * int(len(train_loader)))
+=======
+            remain_iter = args.max_iters - (index + epoch * int(len(train_loader)))
+>>>>>>> FETCH_HEAD
             remain_time = remain_iter * iter_time.avg
             t_m, t_s = divmod(remain_time, 60)
             t_h, t_m = divmod(t_m, 60)
