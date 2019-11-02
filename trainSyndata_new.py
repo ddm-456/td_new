@@ -213,11 +213,12 @@ if __name__ == '__main__':
         for index, (images, gh_label, gah_label, mask, _) in enumerate(train_loader):
 
             st = time.time()
-            if index % 20000 == 0 and index != 0:
+            index = epoch * len(train_loader) + index
+            if index % 10000 == 0 and index != 0:
                 step_index += 1
                 adjust_learning_rate(optimizer, args.gamma, step_index)
             #real_images, real_gh_label, real_gah_label, real_mask = next(batch_real)
-            idx = index + epoch * int(len(train_loader))
+            idx = index + epoch * int(len(train_loader) / args.batch_size)
 
             # syn_images, syn_gh_label, syn_gah_label, syn_mask = next(batch_syn)
             # images = torch.cat((syn_images,real_images), 0)
@@ -253,7 +254,7 @@ if __name__ == '__main__':
             iter_time.update(time.time() - st)
 
 
-            remain_iter = args.max_iters - (idx + epoch * int(len(train_loader)))
+            remain_iter = args.max_iters - (index + epoch * int(len(train_loader)))
             remain_time = remain_iter * iter_time.avg
             t_m, t_s = divmod(remain_time, 60)
             t_h, t_m = divmod(t_m, 60)
