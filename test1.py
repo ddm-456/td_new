@@ -22,7 +22,7 @@ from skimage import io
 import numpy as np
 import craft_utils
 import imgproc
-import file_utils1 as file_utils
+import file_utils as file_utils
 import json
 import zipfile
 
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     parser.add_argument('--config', type=str, default='cfgs/synth_exp001.yaml')
     parser.add_argument('--trained_model', default='./craft_mlt_25k.pth', type=str, help='pretrained model')
     parser.add_argument('--text_threshold', default=0.7, type=float, help='text confidence threshold')
-    parser.add_argument('--low_text', default=0.4, type=float, help='text low-bound score')
+    parser.add_argument('--low_text', default=0.2, type=float, help='text low-bound score')
     parser.add_argument('--link_threshold', default=0.2, type=float, help='link confidence threshold')
     parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
     parser.add_argument('--canvas_size', default=2240, type=int, help='image size for inference')
@@ -175,4 +175,6 @@ if __name__ == "__main__":
 
 
 
-    test(args.trained_model, "./result/", args)
+    test(args.trained_model, result_folder = "./result/", args=args)
+    res_dict = getresult('./result/')
+    print(res_dict['method'])
