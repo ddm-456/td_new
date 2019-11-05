@@ -4,6 +4,8 @@ import numpy as np
 import math
 import Polygon as plg
 
+def sort_left(x):
+    return x[:, 0].mean()
 
 def watershed1(image, viz=False):
     boxes = []
@@ -239,7 +241,28 @@ def watershed(oriimage, image, viz=False):
             continue
         box = np.array(box)
         boxes.append(box)
-    return np.array(boxes)
+    right = 0
+    boxes.sort(key=sort_left)
+    new_boxes = []
+    next_b = -1
+    for i in range(len(boxes)-1):
+        if next_b == i+1:
+            continue
+        if boxes[i][:,0].max() > boxes[i+1][:,0].min():
+            boxes[i][0, 1] = min(boxes[i][0, 1], boxes[i+1][0, 1])
+            boxes[i][1, 1] = min(boxes[i][1, 1], boxes[i+1][1, 1])
+            boxes[i][2, 1] = max(boxes[i][2, 1], boxes[i+1][2, 1])
+            boxes[i][3, 1] = max(boxes[i][3, 1], boxes[i+1][3, 1])
+
+            boxes[i][0, 0] = min(boxes[i][0, 0], boxes[i+1][0, 0])
+            boxes[i][1, 0] = max(boxes[i][1, 0], boxes[i+1][1, 0])
+            boxes[i][2, 0] = max(boxes[i][2, 0], boxes[i+1][2, 0])
+            boxes[i][3, 0] = min(boxes[i][3, 0], boxes[i+1][3, 0])
+            next_b = i+1
+        new_boxes.append(boxes[i])
+
+
+    return np.array(new_boxes)
 
 
 if __name__ == '__main__':

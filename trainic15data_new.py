@@ -214,10 +214,10 @@ if __name__ == '__main__':
     loss_value = AverageMeter(10)
     args.max_iters = args.num_epoch * len(train_loader)
     k = 0
+    st = time.time()
     for epoch in range(args.num_epoch):
         for index, (real_images, real_gh_label, real_gah_label, real_mask, _) in enumerate(real_data_loader):
             #real_images, real_gh_label, real_gah_label, real_mask = next(batch_real)
-            st = time.time()
             idx = index + epoch * int(len(real_data_loader))
             k += 1
             if k % 10000 == 0:
@@ -254,6 +254,7 @@ if __name__ == '__main__':
             optimizer.step()
             loss_value.update(loss.item())
             iter_time.update(time.time() - st)
+            st = time.time()
 
 
             remain_iter = args.max_iters - (idx + epoch * int(len(train_loader)/args.batch_size))

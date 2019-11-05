@@ -203,7 +203,7 @@ class ResnetDilated(nn.Module):
             orig_resnet.layer3.apply(
                 partial(self._nostride_dilate, dilate=2))
             orig_resnet.layer4.apply(
-                partial(self._nostride_dilate, dilate=1))
+                partial(self._nostride_dilate, dilate=4))
         elif dilate_scale == 16:
             orig_resnet.layer4.apply(
                 partial(self._nostride_dilate, dilate=2))
@@ -223,7 +223,6 @@ class ResnetDilated(nn.Module):
         self.layer2 = orig_resnet.layer2
         self.layer3 = orig_resnet.layer3
         self.layer4 = orig_resnet.layer4
-        init_weights(self.layer4.modules())
 
     def _nostride_dilate(self, m, dilate):
         classname = m.__class__.__name__
