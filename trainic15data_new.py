@@ -214,6 +214,10 @@ if __name__ == '__main__':
     loss_value = AverageMeter(10)
     args.max_iters = args.num_epoch * len(train_loader)
     k = 0
+<<<<<<< HEAD
+=======
+
+>>>>>>> FETCH_HEAD
     st = time.time()
     for epoch in range(args.num_epoch):
         for index, (real_images, real_gh_label, real_gah_label, real_mask, _) in enumerate(real_data_loader):
@@ -263,6 +267,7 @@ if __name__ == '__main__':
             t_h, t_m = divmod(t_m, 60)
 
             remain_time = '{:02d}:{:02d}:{:02d}'.format(int(t_h), int(t_m), int(t_s))
+            st = time.time()
 
             if index % args.print_freq == 0:
                 logger.info('Iter = [{0}/{1}]\t'
