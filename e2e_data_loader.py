@@ -8,7 +8,7 @@
 import torch
 import torch.utils.data as data
 import scipy.io as scio
-from new_gaussian import GaussianTransformer
+from gaussian import GaussianTransformer
 from watershed import watershed
 import re
 import itertools
@@ -16,10 +16,94 @@ from file_utils import *
 from mep import mep
 import random
 from PIL import Image
+from math import *
+from torch.utils.data.dataloader import default_collate
 import torchvision.transforms as transforms
 import craft_utils
 import Polygon as plg
 import time
+
+def get_region(img, bbox):
+    pt1 = bbox[0]
+    pt2 = bbox[1]
+    pt3 = bbox[2]
+    pt4 = bbox[3]
+
+    if pt2[1] - pt1[1] < pt2[0] - pt1[0]:
+        temp = pt2
+        pt2 = pt1
+        pt1 = temp
+    if pt4[1] - pt3[1] < pt4[0] - pt3[0]:
+        temp = pt4
+        pt4 = pt3
+        pt3 = temp
+    xlength = pt4[1] - pt1[1]
+    ylength = pt4[0] - pt1[0]
+
+    degree = degrees(atan2(pt2[0] - pt1[0], pt2[1] - pt1[1]))
+
+    partImg = dumpRotateImage(img, degree, pt1, pt2, pt3, pt4)
+
+    ylength, xlength = partImg.shape[:2]
+
+    if partImg.shape[0] < 1 or partImg.shape[1] < 1:
+        return None
+    if ylength / (xlength) > 2:
+        return None
+    return partImg
+
+
+def dumpRotateImage(img, degree, pt1, pt2, pt3, pt4):
+    height, width = img.shape[:2]
+    heightNew = int(width * fabs(sin(radians(degree))) + height * fabs(cos(radians(degree))))
+    widthNew = int(height * fabs(sin(radians(degree))) + height * fabs(cos(radians(degree))))
+
+    matRotation = cv2.getRotationMatrix2D((width // 2, height // 2), degree, 1)
+    matRotation[0, 2] += (widthNew - width) // 2
+    matRotation[1, 2] += (heightNew - height) // 2
+    imgRotation = cv2.warpAffine(img, matRotation, (widthNew, heightNew), borderValue=(0, 0, 0))
+    pt1 = list(pt1)
+    pt4 = list(pt4)
+    [[pt1[1]], [pt1[0]]] = np.dot(matRotation, np.array([[pt1[1]], [pt1[0]], [1]]))
+    [[pt4[1]], [pt4[0]]] = np.dot(matRotation, np.array([[pt4[1]], [pt4[0]], [1]]))
+    ydim, xdim = imgRotation.shape[:2]
+    imgOut = imgRotation[max(1, int(pt1[0])) : min(ydim - 1, int(pt4[0])), max(1, int(pt1[1])) : min(xdim - 1, int(pt4[1]))]
+    if imgOut is None:
+        pdb.set_trace()
+
+    return imgOut
+
+
+
+
+def resize_pad(img, size):
+    new_img = np.ones((size[0], size[1], 3), dtype=np.float32) * 255
+    new_img = imgproc.normalizeMeanVariance(new_img)
+    h, w = img.shape[0:2]
+    scale = size[0]/h
+    try:
+        img = cv2.resize(img, dsize=None, fx=scale, fy=scale)
+    except:
+        print(h, w, scale)
+        return None
+    h, w = img.shape[:2]
+    if w <= size[1]:
+        new_img[:h, :w] = img
+        return new_img
+    else:
+        return None
+
+
+
+def my_collate(batch):
+    return_data = {}
+    torch_data = [i['torch_data'] for i in batch]
+    list_data = [i['list_data'] for i in batch]
+    torch_data = default_collate(torch_data)
+    return_data['torch_data'] = torch_data
+    return_data['list_data'] = list_data
+    return return_data
+
 
 
 def ratio_area(h, w, box):
@@ -42,24 +126,26 @@ def rescale_img(img, box, h, w):
     box *= scale
     return image
 
-def random_scale(img, bboxes, min_size):
+def random_scale(img, bboxes, min_size, word_box=None):
     h, w = img.shape[0:2]
-    # ratio, _ = ratio_area(h, w, bboxes)
-    # if ratio > 0.5:
-    #     image = rescale_img(img.copy(), bboxes, h, w)
-    #     return image
-    scale = 1.0
     if max(h, w) > 1280:
         scale = 1280.0 / max(h, w)
-    random_scale = np.array([0.5, 1.0, 1.5, 2.0])
-    scale1 = np.random.choice(random_scale)
-    if min(h, w) * scale * scale1 <= min_size:
-        scale = (min_size + 10) * 1.0 / min(h, w)
-    else:
-        scale = scale * scale1
+        img = cv2.resize(img, dsize=None, fx=scale, fy=scale)
+        bboxes *= scale
+        if word_box is not None:
+            word_box *=scale
+
+    h, w = img.shape[0:2]
+    random_scale = np.array([1.0])
+    scale = np.random.choice(random_scale)
+    if max(h, w) * scale <= min_size:
+        scale = (min_size) * 1.0 / max(h, w)
     bboxes *= scale
+    if word_box is not None:
+        word_box *= scale
     img = cv2.resize(img, dsize=None, fx=scale, fy=scale)
     return img
+
 
 def padding_image(image,imgsize):
     length = max(image.shape[0:2])
@@ -363,24 +449,44 @@ class craft_base_dataset(data.Dataset):
         image = imgproc.normalizeMeanVariance(np.array(image), mean=(0.485, 0.456, 0.406),
                                               variance=(0.229, 0.224, 0.225))
         image = torch.from_numpy(image).float().permute(2, 0, 1)
-        region_scores_torch = torch.from_numpy(region_scores / 255.).float()
-        affinity_scores_torch = torch.from_numpy(affinity_scores / 255.).float()
+        region_scores_torch = torch.from_numpy(region_scores / 255).float()
+        affinity_scores_torch = torch.from_numpy(affinity_scores / 255).float()
         confidence_mask_torch = torch.from_numpy(confidence_mask).float()
         return image, region_scores_torch, affinity_scores_torch, confidence_mask_torch, confidences
+
+def random_pad(imgs, img_size):
+    h, w = imgs[0].shape[0:2]
+    th, tw = img_size
+    if w == tw and h == th:
+        return imgs
+    for idx in range(len(imgs)):
+        if len(imgs[idx].shape) == 3:
+            imgs_new = np.zeros((th, tw, 3), dtype=imgs[idx].dtype)
+        else:
+            imgs_new = np.zeros((th, tw), dtype=imgs[idx].dtype)
+        imgs_new[:h, :w] = imgs[idx]
+        imgs[idx] = imgs_new
+    return imgs
+
 
 
 class Synth80k(craft_base_dataset):
 
-    def __init__(self, synthtext_folder, target_size=768, viz=False, debug=False):
+    def __init__(self, synthtext_folder, target_size=768, with_word=False, viz=False, debug=False):
         super(Synth80k, self).__init__(target_size, viz, debug)
         self.synthtext_folder = synthtext_folder
         gt = scio.loadmat(os.path.join(synthtext_folder, 'gt.mat'))
         self.charbox = gt['charBB'][0]
         self.image = gt['imnames'][0]
         self.imgtxt = gt['txt'][0]
+        self.with_word = with_word
+        self.wordbox = gt['wordBB'][0]
 
     def __getitem__(self, index):
-        return self.pull_item(index)
+        if self.with_word is True:
+            return self.pull_item_with_box(index)
+        else:
+            return self.pull_item(index)
 
     def __len__(self):
         return len(self.imgtxt)
@@ -415,6 +521,114 @@ class Synth80k(craft_base_dataset):
             confidences.append(1.0)
 
         return image, character_bboxes, words, np.ones((image.shape[0], image.shape[1]), np.float32), confidences
+
+
+    def load_image_gt_and_confidencemask_with_box(self, index):
+        '''
+        根据索引加载ground truth
+        :param index:索引
+        :return:bboxes 字符的框，
+        '''
+        img_path = os.path.join(self.synthtext_folder, self.image[index][0])
+        image = cv2.imread(img_path, cv2.IMREAD_COLOR)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        _charbox = self.charbox[index].transpose((2, 1, 0))
+
+        _wordbox = self.wordbox[index]
+        try:
+            if len(_wordbox.shape) == 3:
+                _wordbox = _wordbox.transpose((2, 1, 0))
+            else:
+                _wordbox = _wordbox.transpose((1, 0)).reshape((1, 4, 2))
+        except:
+            print("wordbox transpose index {}".format(index))
+
+        #image = random_scale(image, _charbox, self.target_size, word_box=_wordbox)
+
+        words = [re.split(' \n|\n |\n| ', t.strip()) for t in self.imgtxt[index]]
+        words = list(itertools.chain(*words))
+        words = [t for t in words if len(t) > 0]
+        character_bboxes = []
+        total = 0
+        confidences = []
+        for i in range(len(words)):
+            bboxes = _charbox[total:total + len(words[i])]
+            assert (len(bboxes) == len(words[i]))
+            total += len(words[i])
+            bboxes = np.array(bboxes)
+            character_bboxes.append(bboxes)
+            confidences.append(1.0)
+        word_bboxes = _wordbox
+
+        return image, character_bboxes, word_bboxes, words, np.ones((image.shape[0], image.shape[1]), np.float32), confidences
+
+
+
+    def pull_item_with_box(self, index):
+        # if self.get_imagename(index) == 'img_59.jpg':
+        #     pass
+        # else:
+        #     return [], [], [], [], np.array([0])
+        image, character_bboxes, word_bboxes, words, confidence_mask, confidences = self.load_image_gt_and_confidencemask_with_box(index)
+        if len(confidences) == 0:
+            confidences = 1.0
+        else:
+            confidences = np.array(confidences).mean()
+        region_scores = np.zeros((image.shape[0], image.shape[1]), dtype=np.float32)
+        affinity_scores = np.zeros((image.shape[0], image.shape[1]), dtype=np.float32)
+        word_region = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
+
+
+        # assign word region
+        word_bboxes = word_bboxes.astype(np.int)
+        for idx, rect in enumerate(word_bboxes):
+            if np.any(rect < 0) or np.any(rect[:, 0] >= image.shape[1]) or np.any(rect[:, 1] >= image.shape[0]):
+                continue
+            for kdx, point in enumerate(rect):
+                word_region[point[1], point[0]] = idx+1
+
+
+        affinity_bboxes = []
+
+        if len(character_bboxes) > 0:
+            region_scores = self.gaussianTransformer.generate_region(region_scores.shape, character_bboxes)
+            affinity_scores, affinity_bboxes = self.gaussianTransformer.generate_affinity(region_scores.shape,
+                                                                                          character_bboxes,
+                                                                                          words)
+        if self.viz:
+            self.saveImage(self.get_imagename(index), image.copy(), character_bboxes, affinity_bboxes, region_scores,
+                           affinity_scores,
+                           confidence_mask)
+        random_transforms = [image, region_scores, affinity_scores, confidence_mask, word_region]
+        #random_transforms = random_crop(random_transforms, (self.target_size, self.target_size), character_bboxes)
+        #random_transforms = random_horizontal_flip(random_transforms)
+        #random_transforms = random_rotate(random_transforms)
+        random_transforms = random_pad(random_transforms, (self.target_size, self.target_size))
+
+        cvimage, region_scores, affinity_scores, confidence_mask, word_region = random_transforms
+
+        region_scores = self.resizeGt(region_scores)
+        affinity_scores = self.resizeGt(affinity_scores)
+        confidence_mask = self.resizeGt(confidence_mask)
+
+        if self.viz:
+            self.saveInput(self.get_imagename(index), cvimage, region_scores, affinity_scores, confidence_mask)
+        image = Image.fromarray(cvimage)
+        image = image.convert('RGB')
+        image = transforms.ColorJitter(brightness=32.0 / 255, saturation=0.5)(image)
+
+        image = imgproc.normalizeMeanVariance(np.array(image), mean=(0.485, 0.456, 0.406),
+                                              variance=(0.229, 0.224, 0.225))
+        image = torch.from_numpy(image).float().permute(2, 0, 1)
+        region_scores_torch = torch.from_numpy(region_scores / 255).float()
+        affinity_scores_torch = torch.from_numpy(affinity_scores / 255).float()
+        confidence_mask_torch = torch.from_numpy(confidence_mask).float()
+        word_region_torch = torch.from_numpy(word_region)
+        return_data = {}
+        return_data['torch_data'] = (image, region_scores_torch.float(), affinity_scores_torch.float(), confidence_mask_torch, confidences, word_region_torch)
+        return_data['list_data'] = words
+        return return_data
+
 
 
 class ICDAR2013(craft_base_dataset):
@@ -618,8 +832,7 @@ class ICDAR2015(craft_base_dataset):
 
 
 if __name__ == '__main__':
-    synthtextloader = Synth80k('./data/SynthText', target_size=768, viz=True, debug=True)
-    b = synthtextloader.__getitem__(0)
+    # synthtextloader = Synth80k('/home/jiachx/publicdatasets/SynthText/SynthText', target_size=768, viz=True, debug=True)
     # train_loader = torch.utils.data.DataLoader(
     #     synthtextloader,
     #     batch_size=1,
@@ -631,23 +844,14 @@ if __name__ == '__main__':
     # image_origin, target_gaussian_heatmap, target_gaussian_affinity_heatmap, mask = next(train_batch)
     from craft import CRAFT
     from torchutil import copyStateDict
-    import argparse
-    parser = argparse.ArgumentParser(description='123')
-    parser.add_argument('--load_model', default='', type=str, help='folder path to input images')
-
-
-    args = parser.parse_args()
-
-
-
 
     net = CRAFT(freeze=True)
     net.load_state_dict(
-        copyStateDict(torch.load(args.load_model)))
+        copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
     net = net.cuda()
     net = torch.nn.DataParallel(net)
     net.eval()
-    dataloader = ICDAR2015(net, './data/icdar15/train_images/', target_size=768, viz=True)
+    dataloader = ICDAR2015(net, '/data/CRAFT-pytorch/icdar2015', target_size=768, viz=True)
     train_loader = torch.utils.data.DataLoader(
         dataloader,
         batch_size=1,

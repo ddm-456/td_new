@@ -4,11 +4,11 @@
 ###for icdar2015####
 
 
-
+import matplotlib.pyplot as plt
 import torch
 import torch.utils.data as data
 import scipy.io as scio
-from new_gaussian import GaussianTransformer
+from gaussian import GaussianTransformer
 from watershed import watershed
 import re
 import itertools
@@ -266,7 +266,7 @@ class craft_base_dataset(data.Dataset):
         bboxes[:, :, 1] = np.clip(bboxes[:, :, 1], 0., image.shape[0] - 1)
         bboxes[:, :, 0] = np.clip(bboxes[:, :, 0], 0., image.shape[1] - 1)
 
-        return bboxes, region_scores, confidence
+        return bboxes, region_scores, confidence, word_image
 
     def resizeGt(self, gtmask):
         return cv2.resize(gtmask, (self.target_size // 2, self.target_size // 2))
@@ -291,7 +291,7 @@ class craft_base_dataset(data.Dataset):
         output = np.concatenate([gt_scores, confidence_mask_gray],
                                 axis=0)
         output = np.hstack([image, output])
-        outpath = os.path.join(os.path.join(os.path.dirname(__file__) + '/output'), "%s_input.jpg" % imagename)
+        outpath = os.path.join(os.path.join(os.path.dirname(__file__) + './output'), "%s_input.jpg" % imagename)
         print(outpath)
         if not os.path.exists(os.path.dirname(outpath)):
             os.mkdir(os.path.dirname(outpath))
@@ -314,11 +314,11 @@ class craft_base_dataset(data.Dataset):
         heat_map = np.concatenate([target_gaussian_heatmap_color, target_gaussian_affinity_heatmap_color], axis=1)
         confidence_mask_gray = imgproc.cvt2HeatmapImg(confidence_mask)
         output = np.concatenate([output_image, heat_map, confidence_mask_gray], axis=1)
-        outpath = os.path.join(os.path.join(os.path.dirname(__file__) + '/output'), imagename)
+        outpath = os.path.join(os.path.join(os.path.dirname(__file__) + './output'), imagename)
 
         if not os.path.exists(os.path.dirname(outpath)):
             os.mkdir(os.path.dirname(outpath))
-        cv2.imwrite(outpath, output)
+        cv2.imwrite(outpath+'.jpg', output)
 
     def pull_item(self, index):
         # if self.get_imagename(index) == 'img_59.jpg':
@@ -363,8 +363,8 @@ class craft_base_dataset(data.Dataset):
         image = imgproc.normalizeMeanVariance(np.array(image), mean=(0.485, 0.456, 0.406),
                                               variance=(0.229, 0.224, 0.225))
         image = torch.from_numpy(image).float().permute(2, 0, 1)
-        region_scores_torch = torch.from_numpy(region_scores / 255.).float()
-        affinity_scores_torch = torch.from_numpy(affinity_scores / 255.).float()
+        region_scores_torch = torch.from_numpy(region_scores / 255).float()
+        affinity_scores_torch = torch.from_numpy(affinity_scores / 255).float()
         confidence_mask_torch = torch.from_numpy(confidence_mask).float()
         return image, region_scores_torch, affinity_scores_torch, confidence_mask_torch, confidences
 
@@ -386,7 +386,7 @@ class Synth80k(craft_base_dataset):
         return len(self.imgtxt)
 
     def get_imagename(self, index):
-        return self.image[index][0]
+        return self.image[index][0]+'.jpg'
 
     def load_image_gt_and_confidencemask(self, index):
         '''
@@ -479,6 +479,9 @@ class ICDAR2013(craft_base_dataset):
                                                                                                words[i],
                                                                                                gt_path,
                                                                                                viz=self.viz)
+                plt.imsave("{}_{}_score.jpg".format(index, i),bbox_region_scores )
+                plt.imsave("{}_{}_img.jpg".format(index, i), image)
+                print(confidence.mean())
                 confidences.append(confidence)
                 cv2.fillPoly(confidence_mask, [np.int32(word_bboxes[i])], (confidence))
                 new_words.append(words[i])
@@ -543,7 +546,7 @@ class ICDAR2015(craft_base_dataset):
         return len(self.images_path)
 
     def get_imagename(self, index):
-        return self.images_path[index]
+        return str(index)
 
     def load_image_gt_and_confidencemask(self, index):
         '''
@@ -574,10 +577,14 @@ class ICDAR2015(craft_base_dataset):
             for i in range(len(word_bboxes)):
                 if words[i] == '###' or len(words[i].strip()) == 0:
                     continue
-                pursedo_bboxes, bbox_region_scores, confidence = self.inference_pursedo_bboxes(self.net, image,
+                pursedo_bboxes, bbox_region_scores, confidence, word_image = self.inference_pursedo_bboxes(self.net, image,
                                                                                                word_bboxes[i],
                                                                                                words[i],
                                                                                                viz=self.viz)
+                plt.imsave( "{}_{}_score.jpg".format(index, i), bbox_region_scores)
+                plt.imsave("{}_{}_img.jpg".format(index, i), word_image)
+                print(confidence)
+
                 confidences.append(confidence)
                 cv2.fillPoly(confidence_mask, [np.int32(word_bboxes[i])], (confidence))
                 new_words.append(words[i])
@@ -618,8 +625,7 @@ class ICDAR2015(craft_base_dataset):
 
 
 if __name__ == '__main__':
-    synthtextloader = Synth80k('./data/SynthText', target_size=768, viz=True, debug=True)
-    b = synthtextloader.__getitem__(0)
+    # synthtextloader = Synth80k('/home/jiachx/publicdatasets/SynthText/SynthText', target_size=768, viz=True, debug=True)
     # train_loader = torch.utils.data.DataLoader(
     #     synthtextloader,
     #     batch_size=1,
@@ -647,7 +653,7 @@ if __name__ == '__main__':
     net = net.cuda()
     net = torch.nn.DataParallel(net)
     net.eval()
-    dataloader = ICDAR2015(net, './data/icdar15/train_images/', target_size=768, viz=True)
+    dataloader = ICDAR2015(net, './data/icdar15/', target_size=768, viz=True)
     train_loader = torch.utils.data.DataLoader(
         dataloader,
         batch_size=1,

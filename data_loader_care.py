@@ -8,7 +8,7 @@
 import torch
 import torch.utils.data as data
 import scipy.io as scio
-from new_gaussian import GaussianTransformer
+from gaussian import GaussianTransformer
 from watershed import watershed
 import re
 import itertools
@@ -363,8 +363,8 @@ class craft_base_dataset(data.Dataset):
         image = imgproc.normalizeMeanVariance(np.array(image), mean=(0.485, 0.456, 0.406),
                                               variance=(0.229, 0.224, 0.225))
         image = torch.from_numpy(image).float().permute(2, 0, 1)
-        region_scores_torch = torch.from_numpy(region_scores / 255.).float()
-        affinity_scores_torch = torch.from_numpy(affinity_scores / 255.).float()
+        region_scores_torch = torch.from_numpy(region_scores / 255).float()
+        affinity_scores_torch = torch.from_numpy(affinity_scores / 255).float()
         confidence_mask_torch = torch.from_numpy(confidence_mask).float()
         return image, region_scores_torch, affinity_scores_torch, confidence_mask_torch, confidences
 
@@ -472,13 +472,15 @@ class ICDAR2013(craft_base_dataset):
                 if words[i] == '###' or len(words[i].strip()) == 0:
                     cv2.fillPoly(confidence_mask, [np.int32(word_bboxes[i])], (0))
             for i in range(len(word_bboxes)):
-                if words[i] == '###' or len(words[i].strip()) == 0:
+                if len(words[i].strip()) == 0:
                     continue
                 pursedo_bboxes, bbox_region_scores, confidence = self.inference_pursedo_bboxes(self.net, image,
                                                                                                word_bboxes[i],
                                                                                                words[i],
                                                                                                gt_path,
                                                                                                viz=self.viz)
+                if words[i] == '###':
+                    confidence.fill(0.2)
                 confidences.append(confidence)
                 cv2.fillPoly(confidence_mask, [np.int32(word_bboxes[i])], (confidence))
                 new_words.append(words[i])
@@ -618,8 +620,7 @@ class ICDAR2015(craft_base_dataset):
 
 
 if __name__ == '__main__':
-    synthtextloader = Synth80k('./data/SynthText', target_size=768, viz=True, debug=True)
-    b = synthtextloader.__getitem__(0)
+    # synthtextloader = Synth80k('/home/jiachx/publicdatasets/SynthText/SynthText', target_size=768, viz=True, debug=True)
     # train_loader = torch.utils.data.DataLoader(
     #     synthtextloader,
     #     batch_size=1,
@@ -631,23 +632,14 @@ if __name__ == '__main__':
     # image_origin, target_gaussian_heatmap, target_gaussian_affinity_heatmap, mask = next(train_batch)
     from craft import CRAFT
     from torchutil import copyStateDict
-    import argparse
-    parser = argparse.ArgumentParser(description='123')
-    parser.add_argument('--load_model', default='', type=str, help='folder path to input images')
-
-
-    args = parser.parse_args()
-
-
-
 
     net = CRAFT(freeze=True)
     net.load_state_dict(
-        copyStateDict(torch.load(args.load_model)))
+        copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
     net = net.cuda()
     net = torch.nn.DataParallel(net)
     net.eval()
-    dataloader = ICDAR2015(net, './data/icdar15/train_images/', target_size=768, viz=True)
+    dataloader = ICDAR2015(net, '/data/CRAFT-pytorch/icdar2015', target_size=768, viz=True)
     train_loader = torch.utils.data.DataLoader(
         dataloader,
         batch_size=1,

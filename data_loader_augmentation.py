@@ -8,7 +8,7 @@
 import torch
 import torch.utils.data as data
 import scipy.io as scio
-from new_gaussian import GaussianTransformer
+from gaussian import GaussianTransformer
 from watershed import watershed
 import re
 import itertools
@@ -49,16 +49,17 @@ def random_scale(img, bboxes, min_size):
     #     image = rescale_img(img.copy(), bboxes, h, w)
     #     return image
     scale = 1.0
-    if max(h, w) > 1280:
-        scale = 1280.0 / max(h, w)
-    random_scale = np.array([0.5, 1.0, 1.5, 2.0])
-    scale1 = np.random.choice(random_scale)
-    if min(h, w) * scale * scale1 <= min_size:
-        scale = (min_size + 10) * 1.0 / min(h, w)
-    else:
-        scale = scale * scale1
+    random_scale = np.random.randint(7, 20)/10.
+    scale1 = random_scale
+    scale = scale * scale1
     bboxes *= scale
     img = cv2.resize(img, dsize=None, fx=scale, fy=scale)
+    new_h, new_w = img.shape[0:2]
+    if min(new_h, new_w)<min_size:
+        max_size = max(min_size, (max(new_h, new_w)))
+        new_img = np.ones((max_size, max_size, 3), dtype=np.uint8)*255
+        new_img[:new_h, :new_w] = img
+        return new_img
     return img
 
 def padding_image(image,imgsize):
@@ -344,10 +345,10 @@ class craft_base_dataset(data.Dataset):
                            affinity_scores,
                            confidence_mask)
         random_transforms = [image, region_scores, affinity_scores, confidence_mask]
-        random_transforms = random_crop(random_transforms, (self.target_size, self.target_size), character_bboxes)
         random_transforms = random_horizontal_flip(random_transforms)
         random_transforms = random_rotate(random_transforms)
 
+        random_transforms = random_crop(random_transforms, (self.target_size, self.target_size), character_bboxes)
         cvimage, region_scores, affinity_scores, confidence_mask = random_transforms
 
         region_scores = self.resizeGt(region_scores)
@@ -618,8 +619,7 @@ class ICDAR2015(craft_base_dataset):
 
 
 if __name__ == '__main__':
-    synthtextloader = Synth80k('./data/SynthText', target_size=768, viz=True, debug=True)
-    b = synthtextloader.__getitem__(0)
+    # synthtextloader = Synth80k('/home/jiachx/publicdatasets/SynthText/SynthText', target_size=768, viz=True, debug=True)
     # train_loader = torch.utils.data.DataLoader(
     #     synthtextloader,
     #     batch_size=1,

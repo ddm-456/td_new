@@ -630,14 +630,23 @@ if __name__ == '__main__':
     # image_origin, target_gaussian_heatmap, target_gaussian_affinity_heatmap, mask = next(train_batch)
     from craft import CRAFT
     from torchutil import copyStateDict
+    import argparse
+    parser = argparse.ArgumentParser(description='123')
+    parser.add_argument('--load_model', default='', type=str, help='folder path to input images')
+
+
+    args = parser.parse_args()
+
+
+
 
     net = CRAFT(freeze=True)
     net.load_state_dict(
-        copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
+        copyStateDict(torch.load(args.load_model)))
     net = net.cuda()
     net = torch.nn.DataParallel(net)
     net.eval()
-    dataloader = ICDAR2015(net, '/data/CRAFT-pytorch/icdar2015', target_size=768, viz=True)
+    dataloader = ICDAR2015(net, './data/icdar15/train_images/', target_size=768, viz=True)
     train_loader = torch.utils.data.DataLoader(
         dataloader,
         batch_size=1,

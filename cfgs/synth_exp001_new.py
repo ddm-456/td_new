@@ -1,5 +1,5 @@
 common:
-    exp_name: synth_exp003
+    exp_name: synth_exp001_new
     lr: 0.00005
     num_epoch: 1000
     print_freq: 10

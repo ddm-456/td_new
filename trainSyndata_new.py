@@ -23,7 +23,7 @@ from test import test
 
 
 from math import exp
-from data_loader import ICDAR2015, Synth80k, ICDAR2013
+from new_data_loader import ICDAR2015, Synth80k, ICDAR2013
 
 ###import file#######
 from mseloss import Maploss
@@ -254,7 +254,7 @@ if __name__ == '__main__':
             iter_time.update(time.time() - st)
 
 
-            remain_iter = args.max_iters - (idx + epoch * int(len(train_loader)/args.batch_size))
+            remain_iter = args.max_iters - (index + epoch * int(len(train_loader)))
             remain_time = remain_iter * iter_time.avg
             t_m, t_s = divmod(remain_time, 60)
             t_h, t_m = divmod(t_m, 60)

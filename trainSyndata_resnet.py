@@ -4,6 +4,7 @@ import sys
 import torch
 import torch.utils.data as data
 import cv2
+from basenet.fcn_resnet import ModelBuilder, SegmentationModule
 import os.path as osp
 import time
 import numpy as np
@@ -19,7 +20,7 @@ import random
 import h5py
 import re
 import water
-from test import test
+from test_resnet import test
 
 
 from math import exp
@@ -156,7 +157,22 @@ if __name__ == '__main__':
     # prefetcher = data_prefetcher(dataloader)
     # input, target1, target2 = prefetcher.next()
     #print(input.size())
-    net = CRAFT()
+    builder = ModelBuilder()
+    net_encoder = builder.build_encoder(
+        arch='resnet50dilated',
+        fc_dim=2048,
+        weights='',
+    )
+
+    net_decoder = builder.build_decoder(
+        arch='c1',
+        weights='',
+        fc_dim=2048,
+        num_class=2,
+    )
+    net = SegmentationModule(
+        net_encoder, net_decoder, False
+    )
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/CRAFT_net_050000.pth')))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/craft_mlt_25k.pth')))
@@ -240,12 +256,13 @@ if __name__ == '__main__':
             # affinity_mask = affinity_mask.type(torch.FloatTensor)
             # affinity_mask = Variable(affinity_mask).cuda()
 
-            out, _ = net(images)
+            out = net(images)
+            out = torch.nn.functional.upsample(out, gh_label.size()[1:3], mode='bilinear')
 
             optimizer.zero_grad()
 
-            out1 = out[:, :, :, 0].cuda()
-            out2 = out[:, :, :, 1].cuda()
+            out1 = out[:, 0, :, :].cuda()
+            out2 = out[:, 1, :, :].cuda()
             loss = criterion(gh_label, gah_label, out1, out2, mask)
 
             loss.backward()
