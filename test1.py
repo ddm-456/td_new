@@ -44,8 +44,8 @@ def str2bool(v):
     return v.lower() in ("yes", "y", "true", "t", "1")
 
 
-
 """ For test images in a folder """
+image_list, _, _ = file_utils.get_files('./data/icdar15/test_images')
 
 result_folder = './result/'
 if not os.path.isdir(result_folder):
@@ -54,7 +54,7 @@ if not os.path.isdir(result_folder):
 def test_net(net, image, text_threshold, link_threshold, low_text, cuda, poly, args=None):
     t0 = time.time()
 
-    # resize
+    # resiz, ie
     img_resized, target_ratio, size_heatmap = imgproc.resize_aspect_ratio(image, args.canvas_size, interpolation=cv2.INTER_LINEAR, mag_ratio=args.mag_ratio)
     ratio_h = ratio_w = 1 / target_ratio
 
@@ -97,8 +97,7 @@ def test_net(net, image, text_threshold, link_threshold, low_text, cuda, poly, a
 
 
 
-def test(modelpara, result_folder=None, args=None):
-    image_list, _, _ = file_utils.get_files(args.test_folder)
+def test(modelpara, args=None, result_folder=None):
     # load net
     net = CRAFT()     # initialize
 
@@ -123,7 +122,7 @@ def test(modelpara, result_folder=None, args=None):
         image = imgproc.loadImage(image_path)
 
         with torch.no_grad():
-            bboxes, polys, score_text = test_net(net, image, args.text_threshold, args.link_threshold, args.low_text, args.cuda, args.poly, args=args)
+            bboxes, polys, score_text = test_net(net, image, args.text_threshold, args.link_threshold, args.low_text, args.cuda, args.poly, args)
         # save score text
         filename, file_ext = os.path.splitext(os.path.basename(image_path))
         mask_file = result_folder + "/res_" + filename + '_mask.jpg'
@@ -158,23 +157,33 @@ if __name__ == "__main__":
                         help='Number of workers used in dataloading')
 
     parser.add_argument('--config', type=str, default='cfgs/synth_exp001.yaml')
-    parser.add_argument('--trained_model', default='./craft_mlt_25k.pth', type=str, help='pretrained model')
-    parser.add_argument('--text_threshold', default=0.7, type=float, help='text confidence threshold')
+    parser.add_argument('--trained_model', default='weights/craft_mlt_25k.pth', type=str, help='pretrained model')
+    parser.add_argument('--text_threshold', default=0.85, type=float, help='text confidence threshold')
     parser.add_argument('--low_text', default=0.4, type=float, help='text low-bound score')
+<<<<<<< HEAD
+    parser.add_argument('--link_threshold', default=0.2, type=float, help='link confidence threshold')
+    parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda for inference')
+    parser.add_argument('--canvas_size', default=2240, type=int, help='image size for inference')
+=======
     parser.add_argument('--link_threshold', default=0.4, type=float, help='link confidence threshold')
     parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
     parser.add_argument('--canvas_size', default=1920, type=int, help='image size for inference')
+>>>>>>> FETCH_HEAD
     parser.add_argument('--mag_ratio', default=2, type=float, help='image magnification ratio')
     parser.add_argument('--poly', default=False, action='store_true', help='enable polygon type')
     parser.add_argument('--show_time', default=False, action='store_true', help='show processing time')
     parser.add_argument('--test_folder', default='/data/', type=str, help='folder path to input images')
-
 
     args = parser.parse_args()
 
 
 
 
+<<<<<<< HEAD
+    test(args.trained_model,result_folder = "./result/", args=args)
+    getresult("./result/")
+=======
     test(args.trained_model, result_folder = "./result/", args=args)
     res_dict = getresult('./result/')
     print(res_dict['method'])
+>>>>>>> FETCH_HEAD

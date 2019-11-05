@@ -24,7 +24,7 @@ from test_resnet import test
 
 
 from math import exp
-from data_loader import ICDAR2015, Synth80k, ICDAR2013
+from new_data_loader import ICDAR2015, Synth80k, ICDAR2013
 
 ###import file#######
 from mseloss import Maploss
@@ -165,7 +165,7 @@ if __name__ == '__main__':
     )
 
     net_decoder = builder.build_decoder(
-        arch='c1',
+        arch='c1_deepsup',
         weights='',
         fc_dim=2048,
         num_class=2,

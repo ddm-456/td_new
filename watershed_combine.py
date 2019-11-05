@@ -143,6 +143,58 @@ def watershed2(image, viz=False):
     return np.array(boxes)
 
 
+
+def _Xaxis_overlap(box1, box2):
+    #box with shape (4,2)
+    #combine_distance = 0.3
+    box1min = np.min(box1[:,0])
+    box1max = np.max(box1[:,0])
+    box2min = np.min(box2[:,0])
+    box2max = np.max(box2[:,0])
+
+
+
+    width1 = box1max - box1min
+    width2 = box2max - box2min
+    min_width = min(width1, width2)
+    #print('the value of width1, width2, min_width', width1, width2, min_width)
+    distance = box1max - box2min
+
+    return distance/min_width
+
+def overlap_box(boxes, combine_distance = 0.4):
+    boxes = np.array(boxes)
+    bbox = list()
+    boxes = boxes[boxes[:, 0, 0].argsort()]
+    fore_box = boxes[0]
+    for i in range(1, len(boxes)):
+        distance = _Xaxis_overlap(fore_box, boxes[i])
+        if distance > combine_distance:
+            fore_box = np.array([[min(fore_box[0, 0], boxes[i][0, 0]), min(fore_box[0, 1], boxes[i][0, 1])],
+                                 [max(fore_box[1, 0], boxes[i][1, 0]), min(fore_box[1, 1], boxes[i][1, 1])],
+                                 [max(fore_box[2, 0], boxes[i][2, 0]), max(fore_box[2, 1], boxes[i][2, 1])],
+                                 [min(fore_box[3, 0], boxes[i][3, 0]), max(fore_box[3, 1], boxes[i][3, 1])]
+                                 ])
+            x, y, w, h = cv2.boundingRect(fore_box)
+            fore_box = np.array([[x, y], [x + w, y], [x + w, y + h], [x, y + h]])
+            # rectangle = cv2.minAreaRect(fore_box)
+            # fore_box = cv2.boxPoints(rectangle)
+            if (len(boxes) -1) == i:
+                bbox.append(fore_box)
+
+        else:
+            if (len(boxes) -1) == i:
+                bbox.append(fore_box)
+                bbox.append(boxes[i])
+            else:
+                bbox.append(fore_box)
+                fore_box = boxes[i]
+    return bbox
+
+
+
+
+
 def watershed(oriimage, image, viz=False):
     # viz = True
     boxes = []
@@ -150,22 +202,13 @@ def watershed(oriimage, image, viz=False):
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     else:
         gray = image
-    if viz:
-        cv2.imshow("gray", gray)
-        cv2.waitKey()
     ret, binary = cv2.threshold(gray, 0.2 * np.max(gray), 255, cv2.THRESH_BINARY)
-    if viz:
-        cv2.imshow("binary", binary)
-        cv2.waitKey()
     # 形态学操作，进一步消除图像中噪点
     kernel = np.ones((3, 3), np.uint8)
     # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     mb = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=2)  # iterations连续两次开操作
     sure_bg = cv2.dilate(mb, kernel, iterations=3)  # 3次膨胀,可以获取到大部分都是背景的区域
     sure_bg = mb
-    if viz:
-        cv2.imshow("sure_bg", mb)
-        cv2.waitKey()
     # 距离变换
     # dist = cv2.distanceTransform(mb, cv2.DIST_L2, 5)
     # if viz:
@@ -173,9 +216,6 @@ def watershed(oriimage, image, viz=False):
     #     cv2.waitKey()
     ret, sure_fg = cv2.threshold(gray, 0.6 * gray.max(), 255, cv2.THRESH_BINARY)
     surface_fg = np.uint8(sure_fg)  # 保持色彩空间一致才能进行运算，现在是背景空间为整型空间，前景为浮点型空间，所以进行转换
-    if viz:
-        cv2.imshow("surface_fg", surface_fg)
-        cv2.waitKey()
     unknown = cv2.subtract(sure_bg, surface_fg)
     # 获取maskers,在markers中含有种子区域
     ret, markers = cv2.connectedComponents(surface_fg)
@@ -187,29 +227,10 @@ def watershed(oriimage, image, viz=False):
     # markers = markers+1
     markers[unknown == 255] = 0
 
-    if viz:
-        color_markers = np.uint8(markers)
-        color_markers = color_markers / (color_markers.max() / 255)
-        color_markers = np.uint8(color_markers)
-        color_markers = cv2.applyColorMap(color_markers, cv2.COLORMAP_JET)
-        cv2.imshow("color_markers", color_markers)
-        cv2.waitKey()
     # a = cv2.applyColorMap(gray, cv2.COLORMAP_JET)
     markers = cv2.watershed(oriimage, markers=markers)
     oriimage[markers == -1] = [0, 0, 255]
-
-    if viz:
-        color_markers = np.uint8(markers + 1)
-        color_markers = color_markers / (color_markers.max() / 255)
-        color_markers = np.uint8(color_markers)
-        color_markers = cv2.applyColorMap(color_markers, cv2.COLORMAP_JET)
-        cv2.imshow("color_markers1", color_markers)
-        cv2.waitKey()
-
-    if viz:
-        cv2.imshow("image", oriimage)
-        cv2.waitKey()
-    for i in range(2, np.max(markers) + 1):
+    for i in range(2, np.max(markers)+1):
         np_contours = np.roll(np.array(np.where(markers == i)), 1, axis=0).transpose().reshape(-1, 2)
         # segmap = np.zeros(gray.shape, dtype=np.uint8)
         # segmap[markers == i] = 255
@@ -228,20 +249,22 @@ def watershed(oriimage, image, viz=False):
         # kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1 + niter, 1 + niter))
         # segmap[sy:ey, sx:ex] = cv2.dilate(segmap[sy:ey, sx:ex], kernel)
         # np_contours = np.roll(np.array(np.where(segmap != 0)), 1, axis=0).transpose().reshape(-1, 2)
-        rectangle = cv2.minAreaRect(np_contours)
-        box = cv2.boxPoints(rectangle)
+        #rectangle = cv2.minAreaRect(np_contours)
+        #box = cv2.boxPoints(rectangle)
 
-        startidx = box.sum(axis=1).argmin()
-        box = np.roll(box, 4 - startidx, 0)
+        x, y, w, h = cv2.boundingRect(np_contours)
+        box = np.array([[x, y], [x+w, y], [x+w, y+h], [x, y+h]])
+        #startidx = box.sum(axis=1).argmin()
+        #box = np.roll(box, 4 - startidx, 0)
         poly = plg.Polygon(box)
         area = poly.area()
         if area < 10:
             continue
         box = np.array(box)
         boxes.append(box)
+    if len(boxes) > 1:
+        boxes = overlap_box(boxes)
     return np.array(boxes)
-
-
 if __name__ == '__main__':
     image = cv2.imread('images/standard.jpg', cv2.IMREAD_COLOR)
     boxes = watershed(image, True)

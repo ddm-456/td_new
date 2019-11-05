@@ -23,7 +23,7 @@ from test import test
 
 
 from math import exp
-from data_loader import ICDAR2015, Synth80k, ICDAR2013
+from data_loader_augmentation_gaussian import ICDAR2015, Synth80k, ICDAR2013
 
 ###import file#######
 from mseloss import Maploss
@@ -218,9 +218,9 @@ if __name__ == '__main__':
         if epoch % 50 == 0 and epoch != 0:
              step_index += 1
              adjust_learning_rate(optimizer, args.gamma, step_index)
-        st = time.time()
         for index, (real_images, real_gh_label, real_gah_label, real_mask, _) in enumerate(real_data_loader):
             #real_images, real_gh_label, real_gah_label, real_mask = next(batch_real)
+            st = time.time()
             idx = index + epoch * int(len(real_data_loader))
             syn_images, syn_gh_label, syn_gah_label, syn_mask, __ = next(batch_syn)
             images = torch.cat((syn_images,real_images), 0)
@@ -261,7 +261,6 @@ if __name__ == '__main__':
             t_h, t_m = divmod(t_m, 60)
 
             remain_time = '{:02d}:{:02d}:{:02d}'.format(int(t_h), int(t_m), int(t_s))
-            st = time.time()
 
             if index % args.print_freq == 0:
                 logger.info('Iter = [{0}/{1}]\t'

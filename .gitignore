@@ -7,6 +7,7 @@ result/*
 *.tar
 *.txt
 *.zip
+*.zip
 *.log
 data/test/icdar2013/*.jpg
 data/test/icdar2015/*.jpg

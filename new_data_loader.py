@@ -7,9 +7,10 @@
 
 import torch
 import torch.utils.data as data
+from tqdm import tqdm
 import scipy.io as scio
 from new_gaussian import GaussianTransformer
-from watershed import watershed
+from watershed_combine import watershed
 import re
 import itertools
 from file_utils import *
@@ -291,7 +292,7 @@ class craft_base_dataset(data.Dataset):
         output = np.concatenate([gt_scores, confidence_mask_gray],
                                 axis=0)
         output = np.hstack([image, output])
-        outpath = os.path.join(os.path.join(os.path.dirname(__file__) + '/output'), "%s_input.jpg" % imagename)
+        outpath = os.path.join(os.path.join(os.path.dirname(__file__) + './output'), "%s_input.jpg" % imagename)
         print(outpath)
         if not os.path.exists(os.path.dirname(outpath)):
             os.mkdir(os.path.dirname(outpath))
@@ -314,7 +315,7 @@ class craft_base_dataset(data.Dataset):
         heat_map = np.concatenate([target_gaussian_heatmap_color, target_gaussian_affinity_heatmap_color], axis=1)
         confidence_mask_gray = imgproc.cvt2HeatmapImg(confidence_mask)
         output = np.concatenate([output_image, heat_map, confidence_mask_gray], axis=1)
-        outpath = os.path.join(os.path.join(os.path.dirname(__file__) + '/output'), imagename)
+        outpath = os.path.join(os.path.join(os.path.dirname(__file__) + './output'), imagename)
 
         if not os.path.exists(os.path.dirname(outpath)):
             os.mkdir(os.path.dirname(outpath))
@@ -618,17 +619,18 @@ class ICDAR2015(craft_base_dataset):
 
 
 if __name__ == '__main__':
-    synthtextloader = Synth80k('./data/SynthText', target_size=768, viz=True, debug=True)
-    b = synthtextloader.__getitem__(0)
-    # train_loader = torch.utils.data.DataLoader(
-    #     synthtextloader,
-    #     batch_size=1,
-    #     shuffle=False,
-    #     num_workers=0,
-    #     drop_last=True,
-    #     pin_memory=True)
-    # train_batch = iter(train_loader)
-    # image_origin, target_gaussian_heatmap, target_gaussian_affinity_heatmap, mask = next(train_batch)
+    synthtextloader = Synth80k('./data/SynthText', target_size=768, viz=True)
+    train_loader = torch.utils.data.DataLoader(
+        synthtextloader,
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        drop_last=True,
+        pin_memory=True)
+    train_batch = iter(train_loader)
+    for i in range(100):
+        image_origin, target_gaussian_heatmap, target_gaussian_affinity_heatmap, mask, _ = synthtextloader.__getitem__(50000+i)
+
     from craft import CRAFT
     from torchutil import copyStateDict
     import argparse
@@ -647,7 +649,7 @@ if __name__ == '__main__':
     net = net.cuda()
     net = torch.nn.DataParallel(net)
     net.eval()
-    dataloader = ICDAR2015(net, './data/icdar15/train_images/', target_size=768, viz=True)
+    dataloader = ICDAR2015(net, './data/icdar15', target_size=768, viz=True)
     train_loader = torch.utils.data.DataLoader(
         dataloader,
         batch_size=1,
@@ -657,11 +659,8 @@ if __name__ == '__main__':
         pin_memory=True)
     total = 0
     total_sum = 0
-    for index, (opimage, region_scores, affinity_scores, confidence_mask, confidences_mean) in enumerate(train_loader):
-        total += 1
-        # confidence_mean = confidences_mean.mean()
-        # total_sum += confidence_mean
-        # print(index, confidence_mean)
+    for i in tqdm(range(1000)):
+        dataloader.__getitem__(i)
     print("mean=", total_sum / total)
 
 
