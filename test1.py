@@ -158,17 +158,11 @@ if __name__ == "__main__":
 
     parser.add_argument('--config', type=str, default='cfgs/synth_exp001.yaml')
     parser.add_argument('--trained_model', default='weights/craft_mlt_25k.pth', type=str, help='pretrained model')
-    parser.add_argument('--text_threshold', default=0.85, type=float, help='text confidence threshold')
+    parser.add_argument('--text_threshold', default=0.8, type=float, help='text confidence threshold')
     parser.add_argument('--low_text', default=0.4, type=float, help='text low-bound score')
-<<<<<<< HEAD
-    parser.add_argument('--link_threshold', default=0.2, type=float, help='link confidence threshold')
-    parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda for inference')
-    parser.add_argument('--canvas_size', default=2240, type=int, help='image size for inference')
-=======
-    parser.add_argument('--link_threshold', default=0.4, type=float, help='link confidence threshold')
+    parser.add_argument('--link_threshold', default=0.3, type=float, help='link confidence threshold')
     parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
     parser.add_argument('--canvas_size', default=1920, type=int, help='image size for inference')
->>>>>>> FETCH_HEAD
     parser.add_argument('--mag_ratio', default=2, type=float, help='image magnification ratio')
     parser.add_argument('--poly', default=False, action='store_true', help='enable polygon type')
     parser.add_argument('--show_time', default=False, action='store_true', help='show processing time')
@@ -179,11 +173,6 @@ if __name__ == "__main__":
 
 
 
-<<<<<<< HEAD
-    test(args.trained_model,result_folder = "./result/", args=args)
-    getresult("./result/")
-=======
     test(args.trained_model, result_folder = "./result/", args=args)
     res_dict = getresult('./result/')
     print(res_dict['method'])
->>>>>>> FETCH_HEAD
