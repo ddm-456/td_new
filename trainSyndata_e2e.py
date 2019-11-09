@@ -38,7 +38,7 @@ from eval.script import getresult
 
 from PIL import Image
 from torchvision.transforms import transforms
-from craft import CRAFT
+from e2e_craft import CRAFT
 from torch.autograd import Variable
 from multiprocessing import Pool
 import os

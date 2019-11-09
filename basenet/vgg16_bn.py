@@ -1,4 +1,8 @@
 from collections import namedtuple
+import os.path as osp
+import sys
+sys.path.insert(0, osp.join(osp.dirname(osp.abspath(__file__)), '../'))
+
 
 import torch
 from torchvision import models
@@ -69,4 +73,10 @@ class vgg16_bn(torch.nn.Module):
 
 
 if __name__ == "__main__":
-    print(vgg16_bn())
+    import torch
+    input = torch.randn((1, 3, 768, 768)).float()
+    input = torch.autograd.Variable(input)
+    model = vgg16_bn()
+    out = model(input)
+    import pdb
+    pdb.set_trace()

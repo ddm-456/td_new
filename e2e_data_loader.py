@@ -8,7 +8,7 @@
 import torch
 import torch.utils.data as data
 import scipy.io as scio
-from gaussian import GaussianTransformer
+from new_gaussian import GaussianTransformer
 from watershed import watershed
 import re
 import itertools

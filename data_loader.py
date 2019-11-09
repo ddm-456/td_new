@@ -186,6 +186,7 @@ class craft_base_dataset(data.Dataset):
 
     def inference_pursedo_bboxes(self, net, image, word_bbox, word, viz=False):
         net.eval()
+        pdb.set_trace()
 
         word_image, MM = self.crop_image_by_bbox(image, word_bbox)
 
