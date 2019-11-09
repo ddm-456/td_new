@@ -157,7 +157,7 @@ if __name__ == '__main__':
     # prefetcher = data_prefetcher(dataloader)
     # input, target1, target2 = prefetcher.next()
     #print(input.size())
-    net = CRAFT(freeze=True)
+    net = CRAFT(freeze=False)
     net.load_state_dict(copyStateDict(torch.load(args.load_model)))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/CRAFT_net_050000.pth')))
     #net.load_state_dict(copyStateDict(torch.load('/data/CRAFT-pytorch/1-7.pth')))
