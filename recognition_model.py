@@ -46,7 +46,7 @@ class Model(nn.Module):
             self.FeatureExtraction = ResNet_FeatureExtractor(opt.input_channel, opt.output_channel)
         else:
             raise Exception('No FeatureExtraction module specified')
-        sel.FeatureExtraction_output = opt.output_channel  # int(imgH/16-1) * 512
+        self.FeatureExtraction_output = opt.output_channel  # int(imgH/16-1) * 512
         self.AdaptiveAvgPool = nn.AdaptiveAvgPool2d((None, 1))  # Transform final (imgH/16-1) -> 1
 
         """ Sequence modeling"""
@@ -69,11 +69,12 @@ class Model(nn.Module):
 
     def forward(self, input, text, is_train=True):
         """ Transformation stage """
-        if not self.stages['Trans'] == "None":
-            input = self.Transformation(input)
+        #if not self.stages['Trans'] == "None":
+        #    input = self.Transformation(input)
 
         """ Feature extraction stage """
-        visual_feature = self.FeatureExtraction(input)
+        #visual_feature = self.FeatureExtraction(input)
+        visual_feature = input
         visual_feature = self.AdaptiveAvgPool(visual_feature.permute(0, 3, 1, 2))  # [b, c, h, w] -> [b, w, c, h]
         visual_feature = visual_feature.squeeze(3)
 

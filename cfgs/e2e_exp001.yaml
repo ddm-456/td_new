@@ -7,8 +7,8 @@ common:
     num_iter: 300000
     valInterval: 2000
     continue_model: False
-    reco_lr: 0.5
-    lr: 3.2768e-5
+    reco_lr: 0.1
+    lr: 0.01
     num_epoch: 1000
     print_freq: 10
     batch_size: 8
@@ -41,5 +41,5 @@ common:
     Prediction: Attn
     num_fiducial: 20
     input_channel: 1
-    output_channel: 512
+    output_channel: 256
     hidden_size: 256

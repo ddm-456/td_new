@@ -3,10 +3,12 @@ import yaml
 import sys
 import torch
 import torch.utils.data as data
+
 import cv2
 import os.path as osp
 import time
 import numpy as np
+from utils import normalize_transforms
 import scipy.io as scio
 import argparse
 import time
@@ -18,6 +20,7 @@ import torch.optim as optim
 import random
 import h5py
 import re
+import skimage.transform as trans
 import water
 from test import test
 
@@ -38,7 +41,7 @@ from eval.script import getresult
 
 from PIL import Image
 from torchvision.transforms import transforms
-from e2e_craft import CRAFT
+from craft_e2e import CRAFT
 from torch.autograd import Variable
 from multiprocessing import Pool
 import os
@@ -112,6 +115,68 @@ def generate_recognition_model(args):
     return model, converter, criterion, optimizer
 
 
+def left_point(x):
+    return x[0]
+
+def get_region_torch(img, bbox):
+    img = img.unsqueeze(0)
+    bbox = [i/4. for i in bbox]
+    bbox.sort(key=left_point)
+    if bbox[0][1] < bbox[1][1]:
+        left_top = bbox[0]
+        left_bottom = bbox[1]
+    else:
+        left_top = bbox[1]
+        left_bottom = bbox[0]
+    if bbox[2][1] < bbox[3][1]:
+        right_top = bbox[2]
+        right_bottom = bbox[3]
+    else:
+        right_top = bbox[3]
+        right_bottom = bbox[2]
+    w = np.linalg.norm(np.float32(right_top) - np.float32(left_top))
+    h = np.linalg.norm(np.float32(left_bottom) - np.float32(left_top))
+
+    width = w
+    height = h
+    if h> w*1.5:
+        width = h
+        height = w
+
+        src = np.float32([left_top, right_top, right_bottom])
+        dst = np.float32([[0,0], [0, height], [height, width]])
+    else:
+        src = np.float32([left_top, right_top, right_bottom])
+        dst = np.float32([[0,0], [0, width], [height, width]])
+    tr = trans.estimate_transform('affine', src=src, dst=dst)
+    inv_tr = trans.estimate_transform('affine', src=dst, dst=src)
+    img_torch = img
+
+    w1, h1 = img_torch.size()[2:]
+    param = np.linalg.inv(tr.params)
+    theta = normalize_transforms(param[0:2, :], w1, h1)
+    inv_param = np.linalg.inv(inv_tr.params)
+    inv_theta = normalize_transforms(inv_param[0:2, :], w1, h1)
+    theta = torch.from_numpy(theta).float()
+    N, C, W, H = img_torch.size()
+    size = torch.Size((N, C, W, H))
+    grid = F.affine_grid(theta.unsqueeze(0), size)
+    output = F.grid_sample(img_torch.cpu(), grid)
+    new_img_torch = output[:, :, :int(height)+1,:int(width)+1]
+    return new_img_torch
+
+
+
+def resize_pad(bbox, height = 16, max_pad = 200):
+    h,w = bbox[2:]
+    width = height/h * w
+    width = int(width)
+    bbox = torch.nn.functional.upsample(bbox, (height, width), mode='bilinear')
+    if width < max_pad:
+        bbox = torch.nn.functional.pad(bbox, (0,max_pad-width, 0, 0), mode='constant')
+        return bbox
+    else:
+        return None
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CRAFT reimplementation')
@@ -216,14 +281,19 @@ if __name__ == '__main__':
     #     drop_last=True,
     #     pin_memory=True)
 
-
-    optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    reco_model, converter, reco_criterion, reco_optimizer = generate_recognition_model(args)
+    reco_model = torch.nn.DataParallel(reco_model, range(torch.cuda.device_count())).cuda()
+    param = [
+        {
+        'params': net.parameters()},
+        {
+            'params': reco_model.parameters(), 'lr': args.reco_lr}
+    ]
+    optimizer = optim.SGD(param, lr=args.lr, weight_decay=args.weight_decay)
     criterion = Maploss()
     #criterion = torch.nn.MSELoss(reduce=True, size_average=True)
     net.train()
 
-    reco_model, converter, reco_criterion, reco_optimizer = generate_recognition_model(args)
-    reco_model = torch.nn.DataParallel(reco_model, range(torch.cuda.device_count())).cuda()
     step_index = 0
 
 
@@ -248,6 +318,8 @@ if __name__ == '__main__':
             st = time.time()
             images, gh_label, gah_label, mask,_,  word_region_torch = batches['torch_data']
             words = batches['list_data']
+
+            '''
             bbox = (word_region_torch[0] == 1).nonzero().numpy()
 
             batch_size = word_region_torch.size(0)
@@ -269,7 +341,7 @@ if __name__ == '__main__':
             if len(word_images) > 0:
                 word_images = np.concatenate(word_images, axis=0)
                 word_images = torch.from_numpy(word_images)
-
+            '''
 
             if index % 10000 == 0 and index != 0:
                 step_index += 1
@@ -298,7 +370,7 @@ if __name__ == '__main__':
             # affinity_mask = affinity_mask.type(torch.FloatTensor)
             # affinity_mask = Variable(affinity_mask).cuda()
 
-            out, _ = net(images.contiguous())
+            out, _, rec_feature = net(images.contiguous())
 
             optimizer.zero_grad()
 
@@ -306,22 +378,42 @@ if __name__ == '__main__':
             out2 = out[:, :, :, 1].cuda()
             loss = criterion(gh_label, gah_label, out1, out2, mask)
 
-            loss.backward()
-            optimizer.step()
+
+
+            bbox = (word_region_torch[0] == 1).nonzero().numpy()
+
+            batch_size = word_region_torch.size(0)
+            word_images = []
+            word_labels = []
+            for batch_index in range(batch_size):
+                for word_index in range(len(words[batch_index])):
+                    bbox = (word_region_torch[batch_index] == word_index+1).nonzero().numpy()
+                    if len(bbox) == 4:
+                        region = get_region_torch(rec_feature[batch_index], bbox)
+                        region = resize_pad(region, height=16, max_pad=400)
+                        #region = resize_pad(region, (32, 200)) if region is not None else None
+                    else:
+                        region = None
+                    if region is not None:
+                        #region = region.mean(2)[:,:,np.newaxis]
+                        word_images.append(region)
+                        word_labels.append(words[batch_index][word_index])
+
+
             if len(word_images)>0:
-                word_images = word_images.cuda()
+                word_images = torch.cat(word_images, dim=0).cuda()
                 text, length = converter.encode(word_labels)
-                batch_size = word_images.size(0)
                 preds = reco_model(word_images, text)
                 target = text[:, 1:]
                 cost = reco_criterion(preds.view(-1, preds.shape[-1]), target.contiguous().view(-1))
-                reco_optimizer.zero_grad()
-                cost.backward()
-                torch.nn.utils.clip_grad_norm_(reco_model.parameters(), args.grad_clip)
-                reco_optimizer.step()
-                reco_loss_value.update(cost.item())
+                sum_loss = cost
+                reco_loss_value.update(sum_loss.item())
 
             loss_value.update(loss.item())
+            loss += sum_loss
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(reco_model.parameters(), args.grad_clip)
+            optimizer.step()
             iter_time.update(time.time() - st)
 
 

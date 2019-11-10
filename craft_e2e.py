@@ -67,10 +67,10 @@ class CRAFT(nn.Module):
         # recognition model
         self.rec_conv1 = conv3x3(128, 256)
         self.rec_conv2 = conv3x3(256, 256)
-        self.rec_pool1 = nn.Maxpool2d(2, 2)
+        self.rec_pool1 = nn.MaxPool2d(2, 2)
         self.rec_conv3 = conv3x3(256, 256)
         self.rec_conv4 = conv3x3(256, 256)
-        self.rec_pool2 = nn.Maxpool2d(2, 2)
+        #self.rec_pool2 = nn.MaxPool2d(2, 2)
         self.rec_conv5 = conv3x3(256+1024, 256)
 
 
@@ -83,7 +83,7 @@ class CRAFT(nn.Module):
     def forward(self, x):
         """ Base network """
         sources = self.basenet(x)
-        h_fc7, h_relu5_3, h_relu4_3, h_relu3_3, h_relu2_2 = out
+        h_fc7, h_relu5_3, h_relu4_3, h_relu3_3, h_relu2_2 = sources
         '''
         # 48 48
          48 48
@@ -119,8 +119,9 @@ class CRAFT(nn.Module):
         y_rec = self.rec_pool1(y_rec)
         y_rec = self.rec_conv3(y_rec)
         y_rec = self.rec_conv4(y_rec)
-        y_rec = self.rec_pool2(y_rec)
-        y_rec = torch.cat([y_rec, h_fc7])
+        #y_rec = self.rec_pool2(y_rec)
+        h_fc7 = F.interpolate(h_fc7, size=y_rec.size()[2:], mode='bilinear', align_corners=False)
+        y_rec = torch.cat([y_rec, h_fc7], dim=1)
         y_rec = self.rec_conv5(y_rec)
 
         return y.permute(0, 2, 3, 1), feature, y_rec
